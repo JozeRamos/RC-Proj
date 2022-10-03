@@ -44,6 +44,14 @@ void alarmHandler(int signal)
     printf("Alarm #%d\n", alarmCount);
 }
 
+void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
+    buf[0] = a;
+    buf[1] = b;
+    buf[2] = c;
+    buf[3] = d;
+    buf[4] = e;
+}
+
 int main(int argc, char *argv[])
 {
     // Program usage: Uses either COM1 or COM2
@@ -112,32 +120,32 @@ int main(int argc, char *argv[])
 
     // Create string to send
     unsigned char buf[5];
+    trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
     
     // In non-canonical mode, '\n' does not end the writing.
     // Test this condition by placing a '\n' in the middle of the buffer.
     // The whole buffer must be sent even with the '\n'.
     //buf[5] = '\n';
 
-    buf[0] = FLAG;
-    buf[1] = A_SET;
-    buf[2] = C_SET;
-    buf[3] = A_SET ^ C_SET;
-    buf[4] = FLAG;
-
     int bytes = write(fd, buf, 5);
     printf("%d bytes written\n", bytes);
     (void)signal(SIGALRM, alarmHandler);
-
+    int cycle = 0;
     while (alarmCount < 4)
     {
-    	bytes = read(fd, buf, 5);
-    	if (buf[2] == C_UA){
-    	    alarmEnabled = FALSE;
-    	    break;
-    	}
+        if (alarmCount == cycle){
+            bytes = read(fd, buf, 5);
+            if (buf[2] == C_UA){
+                alarmEnabled = FALSE;
+                break;
+            }
+            cycle++;
+            trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
+            int bytes = write(fd, buf, 5);
+        }
         if (alarmEnabled == FALSE)
         {
-            alarm(3); // Set alarm to be triggered in 3s
+            alarm(2); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
     }

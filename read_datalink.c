@@ -36,6 +36,14 @@
 
 volatile int STOP = FALSE;
 
+void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
+    buf[0] = a;
+    buf[1] = b;
+    buf[2] = c;
+    buf[3] = d;
+    buf[4] = e;
+}
+
 int main(int argc, char *argv[])
 {
     // Program usage: Uses either COM1 or COM2
@@ -112,11 +120,7 @@ int main(int argc, char *argv[])
 	exit(-1);
     }
     printf("\n");
-    buf[0] = FLAG;
-    buf[1] = A_RES;
-    buf[2] = C_SET;
-    buf[3] = A_RES ^ C_UA;
-    buf[4] = FLAG;
+    trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
     bytes = write(fd, buf, 5);
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
