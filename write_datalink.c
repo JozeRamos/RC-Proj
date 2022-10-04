@@ -22,13 +22,17 @@
 
 #define C_SET 0x03
 #define A_SET 0x03
+#define A_RES 0x01
 #define C_DISC 0x0B
 #define C_UA 0x07
 #define FLAG 0x7E
 #define C_RR 0x05
 #define C_REJ 0x01
 
+
 #define BUF_SIZE 256
+
+int checkStates(char* buf, int length);
 
 volatile int STOP = FALSE;
 
@@ -135,7 +139,7 @@ int main(int argc, char *argv[])
     {
         if (alarmCount == cycle){
             bytes = read(fd, buf, 5);
-            if (buf[2] == C_UA){
+            if (checkStates(buf, 5)){
                 alarmEnabled = FALSE;
                 break;
             }
@@ -173,5 +177,64 @@ int main(int argc, char *argv[])
 
     close(fd);
 
+    return 0;
+}
+
+
+int checkStates(char* buf, int length){
+    int currentChar = 0;
+    int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
+    
+    while(currentChar<length){
+        switch(state){
+            case 0: 
+                if(buf[currentChar] == FLAG)
+                    state = 1;
+                
+                currentChar++;
+                break;
+            
+            case 1:
+                if(buf[currentChar] == A_RES)
+                    state = 2;
+                else if(buf[currentChar] != FLAG)
+                    state = 0;
+                    
+                currentChar++;
+                break;
+                
+            case 2:
+                if(buf[currentChar] == C_UA)
+                    state = 3;
+                else if(buf[currentChar] == FLAG)
+                    state = 1;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+                
+            case 3:
+                if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2])
+                    state = 4;
+                else if(buf[currentChar] == FLAG)
+                    state = 1;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+            
+            case 4:
+                if(buf[currentChar] == FLAG)
+                    return 1;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+        }
+    }
+    
     return 0;
 }
