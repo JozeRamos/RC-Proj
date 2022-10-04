@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
     {
         if (alarmCount == cycle){
             bytes = read(fd, buf, 5);
-            if (checkStates(buf, 5)){
+            if (checkStates(buf, sizeof(buf)/sizeof(char))){
                 alarmEnabled = FALSE;
                 break;
             }
@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
         }
         if (alarmEnabled == FALSE)
         {
-            alarm(2); // Set alarm to be triggered in 3s
+            alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
     }
@@ -227,7 +227,7 @@ int checkStates(char* buf, int length){
             
             case 4:
                 if(buf[currentChar] == FLAG)
-                    return 1;
+                    return TRUE;
                 else 
                     state = 0;
                     
@@ -235,6 +235,5 @@ int checkStates(char* buf, int length){
                 break;
         }
     }
-    
-    return 0;
+    return FALSE;
 }
