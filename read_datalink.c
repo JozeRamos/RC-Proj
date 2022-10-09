@@ -36,12 +36,19 @@
 
 volatile int STOP = FALSE;
 
+int checkStates(char* buf, int length);
+
 void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
     buf[0] = a;
     buf[1] = b;
     buf[2] = c;
     buf[3] = d;
-    buf[4] = e;
+    buf[4] = 't';
+    buf[5] = 'e';
+    buf[6] = 'x';
+    buf[7] = 't';
+    buf[8] = 't'^'e'^'x'^'t'
+    buf[9] = e;
 }
 
 int main(int argc, char *argv[])
@@ -110,15 +117,18 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char buf[5];
+    unsigned char buf[10];
     printf(":");
-    int bytes = read(fd, buf, 5);
-    for(int i=0; i<5; i++)
+    int bytes = read(fd, buf, 10);
+
+    for(int i=0; i < 10; i++)
     	printf("%d ", buf[i]);
-    if (buf[2] != C_SET){
-	printf("Wrong Connection, buf[2] should be C_SET");
-	exit(-1);
+
+    if (!checkStates(buf, sizeof(buf)/sizeof(char)){
+        printf("Something went wrong...");
+        exit(-1);
     }
+
     printf("\n");
     trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
     bytes = write(fd, buf, 5);
@@ -135,4 +145,82 @@ int main(int argc, char *argv[])
     close(fd);
 
     return 0;
+}
+
+
+int checkStates(char* buf, int length){
+    int currentChar = 0;
+    int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
+    unsigned char BCC2;
+    
+    while(currentChar<length){
+        switch(state){
+            case 0: 
+                if(buf[currentChar] == FLAG)
+                    state = 1;
+                
+                currentChar++;
+                break;
+            
+            case 1:
+                if(buf[currentChar] == A_RES)
+                    state = 2;
+                else if(buf[currentChar] != FLAG)
+                    state = 0;
+                    
+                currentChar++;
+                break;
+                
+            case 2:
+                if(buf[currentChar] == C_UA)
+                    state = 3;
+                else if(buf[currentChar] == FLAG)
+                    state = 1;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+                
+            case 3:
+                if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2])
+                    state = 4;
+                else if(buf[currentChar] == FLAG)
+                    state = 1;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+
+            case 4: // Reading data 
+                BCC2 = buf[currentChar];
+
+                for(int i=1; i<4; i++)
+                    BCC2 = BCC2 ^ buf[currentChar+i];
+                    
+                currentChar = currentChar + 4;
+                state = 5;
+                break;
+
+            case 5:
+                if(buf[currentChar] == BCC2)
+                    state = 6;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+            
+            case 6:
+                if(buf[currentChar] == FLAG)
+                    return TRUE;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+        }
+    }
+    return FALSE;
 }
