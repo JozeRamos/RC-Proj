@@ -28,29 +28,22 @@
 #define C_RR 0x05
 #define C_REJ 0x01
 
-#define BUF_SIZE 256
+#define BUF_SIZE 500
 
 #define frameflag 0x7E
 #define address1 0x03
 #define address2 0x01
 
 volatile int STOP = FALSE;
-int Ns = 0;
 
 int checkStates(char* buf, int length);
-int checkData(char* buf, int length, u_int16_t ctrField);
 
 void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
     buf[0] = a;
     buf[1] = b;
     buf[2] = c;
     buf[3] = d;
-    buf[4] = 't';
-    buf[5] = 'e';
-    buf[6] = 'x';
-    buf[7] = 't';
-    buf[8] = 't'^'e'^'x'^'t'
-    buf[9] = e;
+    buf[4] = e;
 }
 
 int main(int argc, char *argv[])
@@ -119,21 +112,26 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char buf[10];
+    unsigned char buf[BUF_SIZE];
     printf(":");
-    int bytes = read(fd, buf, 10);
-
-    for(int i=0; i < 10; i++)
+    int bytes = read(fd, buf, BUF_SIZE);
+    
+    for(int i=0; i<BUF_SIZE; i++)
     	printf("%d ", buf[i]);
-
-    if (!checkStates(buf, sizeof(buf)/sizeof(char)){
-        printf("Something went wrong...");
-        exit(-1);
+    	
+    if (buf[2] != C_SET){
+	    printf("Wrong Connection, buf[2] should be C_SET");
+	    exit(-1);
     }
-
+    
     printf("\n");
     trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
-    bytes = write(fd, buf, 5);
+    printf("Writing trama\n");
+    
+    for(int i=0; i<BUF_SIZE; i++)
+    	printf("%d ", buf[i]);
+    	
+    bytes = write(fd, buf, BUF_SIZE);
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
 
@@ -150,67 +148,7 @@ int main(int argc, char *argv[])
 }
 
 
-int checkSupervision(char* buf, int length, u_int16_t ctrField){
-    int currentChar = 0;
-    int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    if ((ctrField == C_RR || ctrField == C_REJ) && Ns == 1){
-        ctrField = 0x80 | ctrField;
-    }
-    while(currentChar<length){
-        //printf("%d",buf[currentChar]);
-        switch(state){
-            case 0: 
-                if(buf[currentChar] == FLAG)
-                    state = 1;
-                
-                currentChar++;
-                break;
-            
-            case 1:
-                if(buf[currentChar] == A_SET)
-                    state = 2;
-                else if(buf[currentChar] != FLAG)
-                    state = 0;
-                    
-                currentChar++;
-                break;
-                
-            case 2:
-                if(buf[currentChar] == ctrField)
-                    state = 3;
-                else if(buf[currentChar] == FLAG)
-                    state = 1;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-                
-            case 3:
-                if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2])
-                    state = 4;
-                else if(buf[currentChar] == FLAG)
-                    state = 1;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-            
-            case 4:
-                if(buf[currentChar] == FLAG)
-                    return TRUE;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-        }
-    }
-    return FALSE;
-}
-
-int checkData(char* buf, int length, u_int16_t ctrField){
+int checkStates(char* buf, int length){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
     unsigned char BCC2;
@@ -285,4 +223,4 @@ int checkData(char* buf, int length, u_int16_t ctrField){
         }
     }
     return FALSE;
-}
+  }
