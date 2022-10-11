@@ -32,12 +32,13 @@
 
 #define BUF_SIZE 256
 
-int checkStates(char* buf, int length);
+int checkSupervision(char* buf, int length, u_int16_t ctrField);
 
 volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
 int alarmCount = 0;
+int Nr = 0;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -141,7 +142,7 @@ int main(int argc, char *argv[])
             for(int i=0; i < 500; i++)
 	            buf[i] = 0;
             bytes = read(fd, buf, 500);
-            if (checkRecieve(buf, 500)){
+            if (checkSupervision(buf, 500, C_UA)){
                 alarmEnabled = FALSE;
                 break;
             }
@@ -183,10 +184,12 @@ int main(int argc, char *argv[])
 }
 
 
-int checkRecieve(char* buf, int length){
+int checkSupervision(char* buf, int length, u_int16_t ctrField){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    
+    if ((ctrField == C_RR || ctrField == C_REJ) && Nr == 1){
+        ctrField = 0x80 | ctrField;
+    }
     while(currentChar<length){
         //printf("%d",buf[currentChar]);
         switch(state){
@@ -207,7 +210,7 @@ int checkRecieve(char* buf, int length){
                 break;
                 
             case 2:
-                if(buf[currentChar] == C_UA)
+                if(buf[currentChar] == ctrField)
                     state = 3;
                 else if(buf[currentChar] == FLAG)
                     state = 1;
@@ -241,79 +244,3 @@ int checkRecieve(char* buf, int length){
     return FALSE;
 }
 
-int checkData(char* buf, int length){
-    int currentChar = 0;
-    int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    unsigned char BCC2;
-    
-    while(currentChar<length){
-        switch(state){
-            case 0: 
-                if(buf[currentChar] == FLAG)
-                    state = 1;
-                
-                currentChar++;
-                break;
-            
-            case 1:
-                if(buf[currentChar] == A_RES)
-                    state = 2;
-                else if(buf[currentChar] != FLAG)
-                    state = 0;
-                    
-                currentChar++;
-                break;
-                
-            case 2:
-                if(buf[currentChar] == C_UA)
-                    state = 3;
-                else if(buf[currentChar] == FLAG)
-                    state = 1;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-                
-            case 3:
-                if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2])
-                    state = 4;
-                else if(buf[currentChar] == FLAG)
-                    state = 1;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-
-            case 4: // Reading data 
-                BCC2 = buf[currentChar];
-
-                for(int i=1; i<4; i++)
-                    BCC2 = BCC2 ^ buf[currentChar+i];
-                    
-                currentChar = currentChar + 4;
-                state = 5;
-                break;
-
-            case 5:
-                if(buf[currentChar] == BCC2)
-                    state = 6;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-            
-            case 6:
-                if(buf[currentChar] == FLAG)
-                    return TRUE;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-        }
-    }
-    return FALSE;
-}
