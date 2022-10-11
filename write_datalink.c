@@ -53,12 +53,7 @@ void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned 
     buf[1] = b;
     buf[2] = c;
     buf[3] = d;
-    buf[4] = 't';
-    buf[5] = 'e';
-    buf[6] = 'x';
-    buf[7] = 't';
-    buf[8] = 't'^'e'^'x'^'t'
-    buf[9] = e;
+    buf[4] = e;
 }
 
 int main(int argc, char *argv[])
@@ -128,7 +123,7 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Create string to send
-    unsigned char buf[10];
+    unsigned char buf[500];
     trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
     
     // In non-canonical mode, '\n' does not end the writing.
@@ -136,21 +131,23 @@ int main(int argc, char *argv[])
     // The whole buffer must be sent even with the '\n'.
     //buf[5] = '\n';
 
-    int bytes = write(fd, buf, 5);
+    int bytes = write(fd, buf, 500);
     printf("%d bytes written\n", bytes);
     (void)signal(SIGALRM, alarmHandler);
     int cycle = 0;
     while (alarmCount < 4)
     {
         if (alarmCount == cycle){
-            bytes = read(fd, buf, 5);
-            if (checkStates(buf, sizeof(buf)/sizeof(char))){
+            for(int i=0; i < 500; i++)
+	            buf[i] = 0;
+            bytes = read(fd, buf, 500);
+            if (checkRecieve(buf, 500)){
                 alarmEnabled = FALSE;
                 break;
             }
             cycle++;
             trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
-            int bytes = write(fd, buf, 5);
+            int bytes = write(fd, buf, 500);
         }
         if (alarmEnabled == FALSE)
         {
@@ -163,15 +160,13 @@ int main(int argc, char *argv[])
     	exit(-1);
     }
     
-    for(int i=0; i<10; i++)
-	    printf("%d ", buf[i]);
+    for(int i=0; i<5; i++)
+	printf("%d ", buf[i]);
     printf("\n");
-
-    if (!checkStates(buf, sizeof(buf)/sizeof(char)){
-        printf("Something went wrong...");
-        exit(-1);
+    if (buf[2] != C_UA){
+	printf("Wrong Connection, buf[2] should be C_SET");
+	exit(-1);
     }
-
     // Wait until all bytes have been written to the serial port
     sleep(1);
 
@@ -188,7 +183,65 @@ int main(int argc, char *argv[])
 }
 
 
-int checkStates(char* buf, int length){
+int checkRecieve(char* buf, int length){
+    int currentChar = 0;
+    int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
+    
+    while(currentChar<length){
+        //printf("%d",buf[currentChar]);
+        switch(state){
+            case 0: 
+                if(buf[currentChar] == FLAG)
+                    state = 1;
+                
+                currentChar++;
+                break;
+            
+            case 1:
+                if(buf[currentChar] == A_RES)
+                    state = 2;
+                else if(buf[currentChar] != FLAG)
+                    state = 0;
+                    
+                currentChar++;
+                break;
+                
+            case 2:
+                if(buf[currentChar] == C_UA)
+                    state = 3;
+                else if(buf[currentChar] == FLAG)
+                    state = 1;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+                
+            case 3:
+                if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2])
+                    state = 4;
+                else if(buf[currentChar] == FLAG)
+                    state = 1;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+            
+            case 4:
+                if(buf[currentChar] == FLAG)
+                    return TRUE;
+                else 
+                    state = 0;
+                    
+                currentChar++;
+                break;
+        }
+    }
+    return FALSE;
+}
+
+int checkData(char* buf, int length){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
     unsigned char BCC2;
