@@ -37,20 +37,22 @@
 volatile int STOP = FALSE;
 int Ns = 0;
 
-int checkStates(char* buf, int length);
+int checkSupervision(char* buf, int length, u_int16_t ctrField);
 int checkData(char* buf, int length, u_int16_t ctrField);
+void clearBuffer(unsigned char buf[]);
 
 void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
     buf[0] = a;
     buf[1] = b;
     buf[2] = c;
     buf[3] = d;
-    buf[4] = 't';
-    buf[5] = 'e';
-    buf[6] = 'x';
-    buf[7] = 't';
-    buf[8] = 't'^'e'^'x'^'t'
-    buf[9] = e;
+    buf[4] = e;
+}
+
+void clearBuffer(unsigned char buf[]){
+    for (int i = 0; i < 500; i++){
+        buf[i] = 0;
+    }
 }
 
 int main(int argc, char *argv[])
@@ -119,23 +121,27 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char buf[10];
-    printf(":");
-    int bytes = read(fd, buf, 10);
+    unsigned char buf[500];
+    int bytes = read(fd, buf, 500);
 
-    for(int i=0; i < 10; i++)
-    	printf("%d ", buf[i]);
-
-    if (!checkStates(buf, sizeof(buf)/sizeof(char)){
-        printf("Something went wrong...");
+    for(int i=0; i < 5; i++)
+    	printf("%d -", buf[i]);
+    
+    //If the received trama is correct it moves forward, else it reads the trama sent again, if it reads it for more than 3 times it gets a error and exits
+    int count = 0;
+    while (!checkSupervision(buf, sizeof(buf)/sizeof(char), C_SET) && count < 3){
+        clearBuffer(buf);
+        int bytes = read(fd, buf, 500);
+        count ++;
+    }
+    if (count >= 3){
+        perror("Something went wrong...");
         exit(-1);
     }
-
+    clearBuffer(buf);
     printf("\n");
     trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
-    bytes = write(fd, buf, 5);
-    // The while() cycle should be changed in order to respect the specifications
-    // of the protocol indicated in the Lab guide
+    bytes = write(fd, buf, 500);
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

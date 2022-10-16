@@ -33,12 +33,13 @@
 #define BUF_SIZE 256
 
 int checkSupervision(char* buf, int length, u_int16_t ctrField);
+void clearBuffer(unsigned char buf[]);
 
 volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
 int alarmCount = 0;
-int Nr = 0;
+int Nr = 1;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -47,6 +48,12 @@ void alarmHandler(int signal)
     alarmCount++;
 
     printf("Alarm #%d\n", alarmCount);
+}
+
+void clearBuffer(unsigned char buf[]){
+    for (int i = 0; i < 500; i++){
+        buf[i] = 0;
+    }
 }
 
 void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
@@ -136,11 +143,10 @@ int main(int argc, char *argv[])
     printf("%d bytes written\n", bytes);
     (void)signal(SIGALRM, alarmHandler);
     int cycle = 0;
-    while (alarmCount < 4)
+    while (alarmCount < 3)
     {
         if (alarmCount == cycle){
-            for(int i=0; i < 500; i++)
-	            buf[i] = 0;
+            clearBuffer(buf);
             bytes = read(fd, buf, 500);
             if (checkSupervision(buf, 500, C_UA)){
                 alarmEnabled = FALSE;
@@ -156,18 +162,13 @@ int main(int argc, char *argv[])
             alarmEnabled = TRUE;
         }
     }
-    if (alarmCount == 4){
+    if (alarmCount == 3){
     	printf("Timed out!!!");
     	exit(-1);
     }
     
-    for(int i=0; i<5; i++)
-	printf("%d ", buf[i]);
     printf("\n");
-    if (buf[2] != C_UA){
-	printf("Wrong Connection, buf[2] should be C_SET");
-	exit(-1);
-    }
+    
     // Wait until all bytes have been written to the serial port
     sleep(1);
 
@@ -191,7 +192,7 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
         ctrField = 0x80 | ctrField;
     }
     while(currentChar<length){
-        //printf("%d",buf[currentChar]);
+        //printf("%d - ",buf[currentChar]);
         switch(state){
             case 0: 
                 if(buf[currentChar] == FLAG)
