@@ -38,7 +38,7 @@ volatile int STOP = FALSE;
 int Ns = 0;
 
 int checkSupervision(char* buf, int length, u_int16_t ctrField);
-int checkData(char* buf, int length, u_int16_t ctrField);
+int checkData(char* buf, int length);
 void clearBuffer(unsigned char buf[]);
 
 void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
@@ -216,11 +216,18 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
     return FALSE;
 }
 
-int checkData(char* buf, int length, u_int16_t ctrField){
+int checkData(char* buf, int length){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    unsigned char BCC2;
-    
+    u_int16_t ctrField;
+    u_int16_t bcc = 0x00;
+    if (Ns = 1){
+        ctrField = 0x40;
+    }
+    else{
+        ctrField = 0x00;
+    }
+    int count = 0;
     while(currentChar<length){
         switch(state){
             case 0: 
@@ -240,7 +247,7 @@ int checkData(char* buf, int length, u_int16_t ctrField){
                 break;
                 
             case 2:
-                if(buf[currentChar] == C_UA)
+                if(buf[currentChar] == ctrField)
                     state = 3;
                 else if(buf[currentChar] == FLAG)
                     state = 1;
@@ -251,8 +258,9 @@ int checkData(char* buf, int length, u_int16_t ctrField){
                 break;
                 
             case 3:
-                if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2])
+                if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2]){
                     state = 4;
+                }
                 else if(buf[currentChar] == FLAG)
                     state = 1;
                 else 
@@ -262,33 +270,17 @@ int checkData(char* buf, int length, u_int16_t ctrField){
                 break;
 
             case 4: // Reading data 
-                BCC2 = buf[currentChar];
-
-                for(int i=1; i<4; i++)
-                    BCC2 = BCC2 ^ buf[currentChar+i];
-                    
-                currentChar = currentChar + 4;
-                state = 5;
-                break;
-
-            case 5:
-                if(buf[currentChar] == BCC2)
-                    state = 6;
-                else 
-                    state = 0;
-                    
-                currentChar++;
-                break;
-            
-            case 6:
-                if(buf[currentChar] == FLAG)
-                    return TRUE;
-                else 
-                    state = 0;
-                    
-                currentChar++;
+                if (count < 2)
+                    count++;
+                else
+                    bcc = bcc ^ buf[currentChar - 2];
+                if (buf[currentChar] == FLAG && buf[currentChar - 1] == bcc){
+                    return 1;
+                }
                 break;
         }
     }
-    return FALSE;
+    if (state == 4)
+        return 2;
+    return 0;
 }
