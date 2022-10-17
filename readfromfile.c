@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -18,34 +19,48 @@
 #define FLAG_ESCAPE 0x5e
 #define ESCAPE_ESCAPE 0x5d
 
+#define DATASIZE 500
+int frame_num = 1;
 
-char * readFromFile();
-char * createInformationFrame();
-char * textToFrames();
+char * readFromFile(long * length);
+char * createInformationFrame(char * information, int size);
+char * nextFrame(char * information);
 
 int main(void){
-    char * frame = createInformationFrame();
-    for(int i = 0; i<1000; i++){
-        printf("%d ", frame[i]);
-        if(i%100 == 0) printf("\n\n");
+    long textsize = 0;
+    char * text = readFromFile(&textsize);
+    int max_n = textsize/DATASIZE + (textsize % DATASIZE != 0); // max frame number approximated to the ceiling
+    printf("Minimum Frames = %d\n\n\n", textsize, max_n);
+    int size = DATASIZE;
+
+    for(int i = 0; i < max_n; i++){
+        if (frame_num == max_n) 
+            size = textsize % DATASIZE; // if it's the last frame, it could be shorter than 500 chars
+
+        char * frame = createInformationFrame(text+(i*DATASIZE), size);
+        
+        printf("\nFrame number %d:\n\n", frame_num);
+        for(int j = 0; j<(size+6); j++){
+            printf("%c", frame[j]);
+            //if(i%100 == 0) printf("\n\n");
+        }
+        printf("\nend");
+        frame_num++;
     }
-    printf("end");
     return 0;
 }
 
-char * createInformationFrame(){
+char * createInformationFrame(char * information, int size){
     char * frame;
-    long length;
     int c = 0;
-    char * information = readFromFile(&length);
     __int16 BCC2 = 0x00;
-    frame = malloc (length+6);
+    frame = malloc (size+6);
     frame[0] = FLAG;
     frame[1] = A_SET;
     frame[2] = 0x40;
     frame[3] = frame[1]^frame[2];
 
-    for (int i = 0; i<length; i++){
+    for (int i = 0; i<size; i++){
         BCC2 = BCC2 ^ information[i];
         if(information[i] == FLAG){
             frame[4+i+c] = ESCAPE;
@@ -61,8 +76,8 @@ char * createInformationFrame(){
             frame[4+i+c] = information[i];
         }
     }
-    frame[length+4] = BCC2;
-    frame[length+5] = FLAG;
+    frame[size+4] = BCC2;
+    frame[size+5] = FLAG;
     
     return frame;
 }
