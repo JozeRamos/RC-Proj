@@ -36,6 +36,7 @@
 
 volatile int STOP = FALSE;
 int Ns = 0;
+int Nr = 1;
 
 int checkSupervision(char* buf, int length, u_int16_t ctrField);
 int checkData(char* buf, int length);
@@ -122,26 +123,33 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[500];
-    int bytes = read(fd, buf, 500);
 
-    for(int i=0; i < 5; i++)
+    /*for(int i=0; i < 5; i++)
     	printf("%d -", buf[i]);
-    
+    */
     //If the received trama is correct it moves forward, else it reads the trama sent again, if it reads it for more than 3 times it gets a error and exits
     int count = 0;
-    while (!checkSupervision(buf, sizeof(buf)/sizeof(char), C_SET) && count < 3){
+    int bytes = read(fd, buf, 500);
+    while (!checkSupervision(buf, 500, C_SET) && count < 3){
         clearBuffer(buf);
-        int bytes = read(fd, buf, 500);
+        bytes = read(fd, buf, 500);
         count ++;
-    }
+    }/*
+    if (count >= 3){
+        printf("Something went wrong... %i",count);
+        exit(-1);
+    }*/
+    clearBuffer(buf);
+    printf("\n");
+    sleep(1);
+    bytes = read(fd, buf, 500);
+    for (int i = 0; i < 500; i++){
+        printf("%d - ",buf[i]);
+    }/*
     if (count >= 3){
         perror("Something went wrong...");
         exit(-1);
-    }
-    clearBuffer(buf);
-    printf("\n");
-    trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
-    bytes = write(fd, buf, 500);
+    }*/
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
@@ -269,14 +277,28 @@ int checkData(char* buf, int length){
                 currentChar++;
                 break;
 
-            case 4: // Reading data 
-                if (count < 2)
-                    count++;
-                else
-                    bcc = bcc ^ buf[currentChar - 2];
+            case 4: // Reading data
                 if (buf[currentChar] == FLAG && buf[currentChar - 1] == bcc){
+                    if (count == 2)
+                        bcc = bcc ^ buf[currentChar - 2];
                     return 1;
                 }
+                if (buf[currentChar] == 0x7d && buf[currentChar + 1] == 0x5e){
+                    buf[currentChar] = 0x7e;
+                    buf[currentChar + 1] = 0x00;
+                }
+                else if (buf[currentChar] == 0x7d && buf[currentChar + 1] == 0x5d){
+                    buf[currentChar] = 0x7d;
+                    buf[currentChar + 1] = 0x00;
+                }
+                if (count < 2)
+                    count++;
+                else if (buf[currentChar] == 0x00 && (buf[currentChar - 1] != 0x7d
+                            || buf[currentChar - 1] != 0x7e))
+                    bcc = bcc ^ buf[currentChar - 2];
+                else
+                    bcc = bcc ^ buf[currentChar - 2];
+                
                 break;
         }
     }
