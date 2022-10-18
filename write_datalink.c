@@ -28,18 +28,29 @@
 #define FLAG 0x7E
 #define C_RR 0x05
 #define C_REJ 0x01
+#define ESCAPE 0x7d
+#define FLAG_ESCAPE 0x5e
+#define ESCAPE_ESCAPE 0x5d
 
 
 #define BUF_SIZE 256
+#define DATASIZE 494
+#define FRAMESIZE DATASIZE+6
+
+int frame_num = 1;
 
 int checkSupervision(char* buf, int length, u_int16_t ctrField);
 void clearBuffer(unsigned char buf[]);
+char * readFromFile(long * length, char* txt_filename);
+char * createInformationFrame(char * information, int size);
+char * nextFrame(char * information);
 
 volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
 int alarmCount = 0;
 int Nr = 1;
+int Ns = 0;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -51,7 +62,7 @@ void alarmHandler(int signal)
 }
 
 void clearBuffer(unsigned char buf[]){
-    for (int i = 0; i < 500; i++){
+    for (int i = 0; i < FRAMESIZE; i++){
         buf[i] = 0;
     }
 }
@@ -68,12 +79,13 @@ int main(int argc, char *argv[])
 {
     // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
+    char *txt_filename = argv[2];
 
-    if (argc < 2)
+    if (argc < 3)
     {
         printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
+               "Usage: %s <SerialPort> <filename.txt>\n"
+               "Example: %s /dev/ttyS1 <loremipsum.txt>\n",
                argv[0],
                argv[0]);
         exit(1);
@@ -129,16 +141,13 @@ int main(int argc, char *argv[])
     }
 
     printf("New termios structure set\n");
-
-    // Create string to send
-    unsigned char buf[500];
-    trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
+    printf("Sending the S frame!\n");
     
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
-    //buf[5] = '\n';
-
+    // S Frame
+    unsigned char buf [FRAMESIZE];
+    
+    trama(FLAG, A_SET, C_SET, A_SET^C_SET, FLAG, buf);
+    
     int bytes = write(fd, buf, 500);
     printf("%d bytes written\n", bytes);
     (void)signal(SIGALRM, alarmHandler);
@@ -172,14 +181,76 @@ int main(int argc, char *argv[])
     // Wait until all bytes have been written to the serial port
     sleep(1);
 
-    // Restore the old port settings
-    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
-    {
-        perror("tcsetattr");
-        exit(-1);
-    }
 
-    close(fd);
+    // Create the frames
+    long textsize = 0;
+    char * frame;
+    char * text = readFromFile(&textsize, txt_filename);
+    int max_n = textsize/DATASIZE + (textsize % DATASIZE != 0); // max frame number int
+    
+    printf("Minimum Frames = %d\n\n\n", max_n);
+    
+    int size = DATASIZE;
+    
+    printf("Sending the I frame!\n");
+    
+    for(int i = 0; i < max_n; i++){
+        if (frame_num == max_n) 
+            size = textsize % DATASIZE; // if it's the last frame, it could be shorter than 500 chars
+
+        frame = createInformationFrame(text+(i*DATASIZE), size);
+        
+            int bytes = write(fd, frame, FRAMESIZE);
+            
+            printf("\nFrame number %d:\n\n", frame_num);
+            for(int j = 0; j<(size+6); j++){
+                printf("%d ", frame[j]);
+                //if(i%100 == 0) printf("\n\n");
+            }
+            printf("\nend");
+            
+            printf("%d bytes written\n", bytes);
+            (void)signal(SIGALRM, alarmHandler);
+            int cycle = 0;
+            while (alarmCount < 3)
+            {
+                if (alarmCount == cycle){
+                    clearBuffer(buf);
+                    bytes = read(fd, buf, FRAMESIZE);
+                    if (checkSupervision(buf, FRAMESIZE, C_UA)){
+                        alarmEnabled = FALSE;
+                        break;
+                    }
+                    cycle++;
+                    int bytes = write(fd, frame, FRAMESIZE);
+                }
+                if (alarmEnabled == FALSE)
+                {
+                    alarm(3); // Set alarm to be triggered in 3s
+                    alarmEnabled = TRUE;
+                }
+            }
+            if (alarmCount == 3){
+            	printf("Timed out!!!");
+            	exit(-1);
+            }
+            
+            printf("\n");
+            
+            // Wait until all bytes have been written to the serial port
+            sleep(1);
+
+            // Restore the old port settings
+            if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
+            {
+                perror("tcsetattr");
+                exit(-1);
+            }
+
+           close(fd);
+        frame_num++;
+    }
+    
 
     return 0;
 }
@@ -245,3 +316,57 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
     return FALSE;
 }
 
+char * createInformationFrame(char * information, int size){
+    char * frame;
+    int c = 0;
+    u_int16_t BCC2 = 0x00;
+    frame = malloc (size+6);
+    frame[0] = FLAG;
+    frame[1] = A_SET;
+    if(Ns == 0) 
+        frame[2] = 0x00;
+    else
+        frame[2] = 0x40;
+    frame[3] = frame[1]^frame[2];
+
+    for (int i = 0; i<size; i++){
+        BCC2 = BCC2 ^ information[i];
+        if(information[i] == FLAG){
+            frame[4+i+c] = ESCAPE;
+            frame[4+i+1+c] = FLAG_ESCAPE;
+            c++;
+        }
+        else if(information[i] == ESCAPE){
+            frame[4+i+c] = ESCAPE;
+            frame[4+i+1+c] = ESCAPE_ESCAPE;
+            c++;
+        }
+        else{
+            frame[4+i+c] = information[i];
+        }
+    }
+    frame[size+4] = BCC2;
+    frame[size+5] = FLAG;
+    
+    return frame;
+}
+
+
+char * readFromFile(long* length, char* txt_filename){
+    char * buffer = 0;
+    FILE * fp = fopen (txt_filename, "rb");
+    if (fp != NULL){
+        fseek (fp, 0, SEEK_END);
+        *length = ftell (fp);
+        fseek (fp, 0, SEEK_SET);
+        buffer = malloc ((*length)+1);
+
+        if (buffer)
+        {
+            fread (buffer, 1, *length, fp);
+        }
+        fclose (fp);
+        buffer[*length] = '\0';
+        return buffer;
+    }
+}
