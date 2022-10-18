@@ -30,7 +30,7 @@ int main(void){
     long textsize = 0;
     char * text = readFromFile(&textsize);
     int max_n = textsize/DATASIZE + (textsize % DATASIZE != 0); // max frame number approximated to the ceiling
-    printf("Minimum Frames = %d\n\n\n", textsize, max_n);
+    printf("Bytes:%d Minimum Frames = %d\n\n\n", textsize, max_n);
     int size = DATASIZE;
 
     for(int i = 0; i < max_n; i++){
