@@ -38,7 +38,7 @@ void clearBuffer(unsigned char buf[]);
 volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
-int alarmCount = 0;
+int alarmCount;
 int Nr = 1;
 
 // Alarm function handler
@@ -46,8 +46,8 @@ void alarmHandler(int signal)
 {
     alarmEnabled = FALSE;
     alarmCount++;
-
-    printf("Alarm #%d\n", alarmCount);
+    if (alarmCount != 4)
+        printf("Alarm #%d\n", alarmCount);
 }
 
 void clearBuffer(unsigned char buf[]){
@@ -139,27 +139,41 @@ int main(int argc, char *argv[])
     // The whole buffer must be sent even with the '\n'.
     //buf[5] = '\n';
 
-    int bytes = write(fd, buf, 500);
-    printf("%d bytes written\n", bytes);
+    //printf("%d bytes written\n", bytes);
     (void)signal(SIGALRM, alarmHandler);
     int cycle = 0;
+    int state = 0;
+    alarmCount = 0;
     while (alarmCount < 3)
     {
-        if (alarmCount == cycle){
+        
+        if (alarmEnabled == FALSE)
+            {
+            alarm(3); // Set alarm to be triggered in 3s
+            alarmEnabled = TRUE;
+        }
+        if (alarmCount == cycle && state == 0){
             clearBuffer(buf);
-            bytes = read(fd, buf, 500);
+            /*bytes = read(fd, buf, 500);
+            for(int i=0; i < 5; i++)
+    	        printf("%d -", buf[i]);
             if (checkSupervision(buf, 500, C_UA)){
                 alarmEnabled = FALSE;
                 break;
-            }
+            }*/
             cycle++;
             trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
-            int bytes = write(fd, buf, 500);
-        }
-        if (alarmEnabled == FALSE)
-        {
-            alarm(3); // Set alarm to be triggered in 3s
-            alarmEnabled = TRUE;
+            write(fd, buf, 500);
+            clearBuffer(buf);
+            read(fd, buf, 500);
+            for(int i=0; i < 5; i++)
+                printf("%d -", buf[i]);
+            if (checkSupervision(buf, 500, C_UA) && alarmCount == 2){
+                printf("Connection good ");
+                state++;
+                alarmCount = 0;
+            }
+            //printf("state - %i  cycle - %i  alarm - %i", state, cycle, alarmCount);
         }
     }
     if (alarmCount == 3){

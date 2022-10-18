@@ -38,7 +38,7 @@ volatile int STOP = FALSE;
 int Ns = 0;
 
 int checkSupervision(char* buf, int length, u_int16_t ctrField);
-int checkData(char* buf, int length);
+int checkData(unsigned char buf[], int length);
 void clearBuffer(unsigned char buf[]);
 
 void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
@@ -122,26 +122,52 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[500];
-    int bytes = read(fd, buf, 500);
-
-    for(int i=0; i < 5; i++)
-    	printf("%d -", buf[i]);
     
     //If the received trama is correct it moves forward, else it reads the trama sent again, if it reads it for more than 3 times it gets a error and exits
     int count = 0;
-    while (!checkSupervision(buf, sizeof(buf)/sizeof(char), C_SET) && count < 3){
-        clearBuffer(buf);
-        int bytes = read(fd, buf, 500);
-        count ++;
+    int state = 0;
+    while (count < 3){
+        if (read(fd, buf, 500)){
+            for(int i=0; i < 5; i++)
+                printf("%d -", buf[i]);
+            printf("\n");
+            if (checkData(buf, 500) && state == 1){
+                state++;
+                count = 0;
+                break;
+            }
+            else if (state == 1){
+                write(fd,buf,500);
+                if (state == 2)
+                    count++;
+                count ++;
+                state--;
+            }
+            if (checkSupervision(buf, 500, C_SET) && state == 0){
+                trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
+                write(fd, buf, 500);
+                state++;
+            }
+            else{
+                write(fd,buf,500);
+                count ++;
+            }
+
+            
+            //printf("count %i   state %i  \n",count, state);
+
+            
+            clearBuffer(buf);
+            
+        }
     }
-    if (count >= 3){
-        perror("Something went wrong...");
+    if (count > 2){
+        perror("Something went wrong...connection lost");
         exit(-1);
     }
+    printf("all good");
     clearBuffer(buf);
     printf("\n");
-    trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
-    bytes = write(fd, buf, 500);
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
@@ -216,7 +242,7 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
     return FALSE;
 }
 
-int checkData(char* buf, int length){
+int checkData(unsigned char buf[], int length){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
     u_int16_t ctrField;
@@ -269,14 +295,32 @@ int checkData(char* buf, int length){
                 currentChar++;
                 break;
 
-            case 4: // Reading data 
+            case 4: // Reading data
+                if (buf[currentChar] == FLAG){
+                    if (count > 1){
+                        bcc = bcc ^ buf[currentChar - 2];
+                    }
+                    else if (count == 1)
+                        return 1;
+                    else
+                        return 2;
+                    if (buf[currentChar - 1] == bcc)
+                        return 1;
+                    return 2;
+                }
+                if (buf[currentChar] == 0x7d){
+                    if (buf[currentChar + 1] == 0x5e){
+                        buf[currentChar] = 0x7e;
+                    }
+                    for (int i = currentChar + 1; i < 500; i ++){
+                        buf[i] = buf[i + 1];
+                    }
+                }
                 if (count < 2)
                     count++;
                 else
                     bcc = bcc ^ buf[currentChar - 2];
-                if (buf[currentChar] == FLAG && buf[currentChar - 1] == bcc){
-                    return 1;
-                }
+                
                 break;
         }
     }
