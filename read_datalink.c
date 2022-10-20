@@ -35,10 +35,11 @@
 #define address2 0x01
 
 volatile int STOP = FALSE;
-int Ns = 0;
+int Ns = 1;
+int Nr = 0;
 
 int checkSupervision(char* buf, int length, u_int16_t ctrField);
-int checkData(unsigned char buf[], int length);
+int checkData(unsigned char buf[],unsigned char message[]);
 void clearBuffer(unsigned char buf[]);
 
 void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
@@ -126,33 +127,67 @@ int main(int argc, char *argv[])
     //If the received trama is correct it moves forward, else it reads the trama sent again, if it reads it for more than 3 times it gets a error and exits
     int count = 0;
     int state = 0;
+    unsigned char message[495];
+    unsigned char trash[495];
     while (count < 3){
         if (read(fd, buf, 500)){
-            for(int i=0; i < 5; i++)
-                printf("%d -", buf[i]);
-            printf("\n");
-            if (checkData(buf, 500) && state == 1){
+                //for(int i=0; i < 500; i++)
+                //    printf("%i -- %d\n",i, buf[i]);
+                //printf("\n");
+            if (checkData(buf,message) && state == 1){
                 state++;
                 count = 0;
-                break;
             }
             else if (state == 1){
-                write(fd,buf,500);
-                if (state == 2)
-                    count++;
-                count ++;
                 state--;
             }
+            if (state == 2){
+                //printf("bytes\n");
+                clearBuffer(message);
+                printf("here - %i\n", checkData(buf,message));
+                switch (checkData(buf,trash))
+                {
+                case 0:
+                    clearBuffer(buf);
+                    if (Nr)
+                        trama(FLAG,A_RES,C_RR | 0x80,A_RES ^ (C_RR | 0x80), FLAG, buf);
+                    else
+                        trama(FLAG,A_RES,C_RR,A_RES ^ C_RR, FLAG, buf);
+                    break;
+                case 1:
+                    clearBuffer(buf);
+                    if (Nr)
+                        trama(FLAG,A_RES,C_RR | 0x80,A_RES ^ (C_RR | 0x80), FLAG, buf);
+                    else
+                        trama(FLAG,A_RES,C_RR,A_RES ^ C_RR, FLAG, buf);
+                    break;
+                case 2:
+                    clearBuffer(buf);
+                    if (Nr)
+                        trama(FLAG,A_RES,C_REJ | 0x80,A_RES ^ (C_REJ | 0x80), FLAG, buf);
+                    else
+                        trama(FLAG,A_RES,C_REJ,A_RES ^ C_REJ, FLAG, buf);
+                    break;
+                }
+                //for(int i=0; i < 20; i++)
+                //    printf("%d -", buf[i]);
+                write(fd, buf, 500);
+                break;
+            }
+            //for(int i=0; i < 5; i++)
+            //    printf("%d -", buf[i]);
+            //printf("\n");
+            
             if (checkSupervision(buf, 500, C_SET) && state == 0){
                 trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
                 write(fd, buf, 500);
                 state++;
+                printf("good\n");
             }
             else{
                 write(fd,buf,500);
                 count ++;
             }
-
             
             //printf("count %i   state %i  \n",count, state);
 
@@ -185,13 +220,10 @@ int main(int argc, char *argv[])
 int checkSupervision(char* buf, int length, u_int16_t ctrField){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    if ((ctrField == C_RR || ctrField == C_REJ) && Ns == 1){
-        ctrField = 0x80 | ctrField;
-    }
     while(currentChar<length){
         //printf("%d",buf[currentChar]);
         switch(state){
-            case 0: 
+            case 0:
                 if(buf[currentChar] == FLAG)
                     state = 1;
                 
@@ -235,14 +267,13 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
                 else 
                     state = 0;
                     
-                currentChar++;
                 break;
         }
     }
     return FALSE;
 }
 
-int checkData(unsigned char buf[], int length){
+int checkData(unsigned char buf[], unsigned char message[]){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
     u_int16_t ctrField;
@@ -254,9 +285,12 @@ int checkData(unsigned char buf[], int length){
         ctrField = 0x00;
     }
     int count = 0;
-    while(currentChar<length){
+    int messageC = 0;
+    while(currentChar<500){
+        //printf("%i --  %d",currentChar, buf[currentChar]);
         switch(state){
-            case 0: 
+            case 0:
+                //printf("1\n");
                 if(buf[currentChar] == FLAG)
                     state = 1;
                 
@@ -264,7 +298,8 @@ int checkData(unsigned char buf[], int length){
                 break;
             
             case 1:
-                if(buf[currentChar] == A_RES)
+                //printf("2\n");
+                if(buf[currentChar] == A_SET)
                     state = 2;
                 else if(buf[currentChar] != FLAG)
                     state = 0;
@@ -273,6 +308,7 @@ int checkData(unsigned char buf[], int length){
                 break;
                 
             case 2:
+                //printf("3\n");
                 if(buf[currentChar] == ctrField)
                     state = 3;
                 else if(buf[currentChar] == FLAG)
@@ -284,6 +320,7 @@ int checkData(unsigned char buf[], int length){
                 break;
                 
             case 3:
+                //printf("4\n");
                 if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2]){
                     state = 4;
                 }
@@ -296,12 +333,18 @@ int checkData(unsigned char buf[], int length){
                 break;
 
             case 4: // Reading data
+                //printf("5\n");
                 if (buf[currentChar] == FLAG){
+                    //printf("FLAG");
                     if (count > 1){
-                        bcc = bcc ^ buf[currentChar - 2];
+                        bcc = bcc ^ message[messageC - 2];
                     }
-                    else if (count == 1)
+                    else if (count == 1){
+                        for (int i = messageC - 1; i < 500; i ++){
+                            message[i] = 0;
+                        }
                         return 1;
+                    }
                     else
                         return 2;
                     if (buf[currentChar - 1] == bcc)
@@ -310,21 +353,27 @@ int checkData(unsigned char buf[], int length){
                 }
                 if (buf[currentChar] == 0x7d){
                     if (buf[currentChar + 1] == 0x5e){
-                        buf[currentChar] = 0x7e;
+                        message[messageC] = 0x7e;
                     }
-                    for (int i = currentChar + 1; i < 500; i ++){
-                        buf[i] = buf[i + 1];
+                    else{
+                        message[messageC] = 0x7d;
                     }
+                    currentChar++;
+                }
+                else{
+                    message[messageC] = buf[currentChar];
                 }
                 if (count < 2)
                     count++;
                 else
-                    bcc = bcc ^ buf[currentChar - 2];
-                
+                    bcc = bcc ^ message[messageC - 2];
+                messageC++;
+                currentChar++;
                 break;
         }
     }
     if (state == 4)
         return 2;
+    printf("\nEND\n");
     return 0;
 }

@@ -29,17 +29,23 @@
 #define C_RR 0x05
 #define C_REJ 0x01
 
-
-#define BUF_SIZE 256
+#define BUFFER_SIZE 245
 
 int checkSupervision(char* buf, int length, u_int16_t ctrField);
 void clearBuffer(unsigned char buf[]);
+int next_block_size(int count, int buffer_size);
+void infoTrama(unsigned char buf[]);
+
+int next_block_size(int count, int buffer_size) {
+return (count >= buffer_size)? buffer_size: count % buffer_size;
+}
 
 volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
 int alarmCount;
-int Nr = 1;
+int Nr = 0;
+int Ns = 1;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -64,21 +70,50 @@ void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned 
     buf[4] = e;
 }
 
+void infoTrama(unsigned char buf[]){
+    buf[0] = FLAG;
+    buf[1] = A_SET;
+    if (Ns == 1)
+        buf[2] = 0x40;
+    else
+        buf[2] = 0x00;
+    buf[3] = buf[1] ^ buf[2];
+}
+
 int main(int argc, char *argv[])
 {
     // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
 
-    if (argc < 2)
+    if (argc < 3)
     {
         printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
+               "Usage: %s <SerialPort> <filename.txt>\n"
+               "Example: %s /dev/ttyS1 text.txt\n",
                argv[0],
                argv[0]);
         exit(1);
     }
 
+    /* check if file can be opened and is readable */
+    int file = open(argv[2], O_RDONLY);
+    if (file == -1) {
+        printf("error: cannot open %s\n", argv[1]);
+        return EXIT_FAILURE;
+    }
+
+    /* get the file size */
+    struct stat info;
+    int ret = lstat(argv[2], &info);
+    if (ret == -1) {
+        printf("error: cannot stat %s\n", argv[2]);
+        return EXIT_FAILURE;
+    }
+
+
+    int count = info.st_size;
+    printf("real - %i\n", count);
+    char buffer[BUFFER_SIZE];
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
@@ -147,13 +182,13 @@ int main(int argc, char *argv[])
     while (alarmCount < 3)
     {
         
+        clearBuffer(buf);
         if (alarmEnabled == FALSE)
             {
             alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
         if (alarmCount == cycle && state == 0){
-            clearBuffer(buf);
             /*bytes = read(fd, buf, 500);
             for(int i=0; i < 5; i++)
     	        printf("%d -", buf[i]);
@@ -168,19 +203,71 @@ int main(int argc, char *argv[])
             read(fd, buf, 500);
             for(int i=0; i < 5; i++)
                 printf("%d -", buf[i]);
-            if (checkSupervision(buf, 500, C_UA) && alarmCount == 2){
+            if (checkSupervision(buf, 500, C_UA)){
                 printf("Connection good ");
                 state++;
                 alarmCount = 0;
+                cycle = 0;
             }
+            
             //printf("state - %i  cycle - %i  alarm - %i", state, cycle, alarmCount);
+        }
+        if (alarmCount == cycle && count != 0 && state == 1) {
+            clearBuffer(buf);
+            infoTrama(buf);
+            cycle++;
+            int numOfBytes = 3;
+            //printf("count - %i\n", count);
+            u_int16_t bcc = 0x00;
+            while (count > 0 && numOfBytes < 497){
+                read(file, buffer, next_block_size(count, 1));
+                //printf("count - %i\n",count);
+                count --;
+                numOfBytes ++;
+                //printf("%d  - %i", buffer[0], numOfBytes);
+                bcc = bcc ^ buffer[0];
+                if (buffer[0] == 0x7e){
+                    buf[numOfBytes] = 0x7d;
+                    numOfBytes++;
+                    buf[numOfBytes] = 0x5e;
+                }
+                else if (buffer[0] == 0x7d){
+                    buf[numOfBytes] = 0x7d;
+                    numOfBytes++;
+                    buf[numOfBytes] = 0x5d;
+                }
+                else{
+                    buf[numOfBytes] = buffer[0];
+                }
+                //printf("byte - %d\n",buf[numOfBytes]);
+            }
+            buf[numOfBytes + 1] = bcc;
+            buf[numOfBytes + 2] = FLAG;
+            for(int i=0; i < 12; i++)
+                printf("%d -", buf[i]);
+            write(fd, buf, 500);
+            clearBuffer(buf);
+            printf("here\n");
+            read(fd, buf, 500);
+            //for(int i=0; i < 10; i++)
+            //    printf("%d -", buf[i]);
+            if (checkSupervision(buf, 500, C_RR)){
+                printf("Connection good for now");
+                alarmCount = 0;
+                cycle = 0;
+                break;
+            }
+        }
+        if (count < 1){
+            printf("good message!!");
+            break;
         }
     }
     if (alarmCount == 3){
     	printf("Timed out!!!");
     	exit(-1);
     }
-    
+    close(file);
     printf("\n");
     
     // Wait until all bytes have been written to the serial port
