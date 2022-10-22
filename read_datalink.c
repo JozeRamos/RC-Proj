@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
         if (read(fd, buf, 500)){
                 
                 
-            if (checkData(buf,message) && state == 1){
+            if (checkData(buf,trash) && state == 1){
                 state++;
                 count = 0;
             }
@@ -409,6 +409,7 @@ int checkData(unsigned char buf[], unsigned char message[]){
                         return 2;
 
                     if (buf[currentChar - 1] == bcc)
+                        message[messageC - 1] = 0;
                         return 1;
                     return 2; 
                 }
