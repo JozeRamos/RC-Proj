@@ -221,6 +221,7 @@ int main(int argc, char *argv[])
                 write(fd, buf, 500);
                 state++;
                 printf("good\n");
+                count++;
             }
             else if (!ignore){
                 write(fd,buf,500);
@@ -230,9 +231,11 @@ int main(int argc, char *argv[])
                 count++;
             }
             
-            printf("count %i   state %i  \n",count, state);
+            //printf("count %i   state %i  \n",count, state);
 
-            
+            /* for(int i=0; i < 500; i++)
+                printf("%d -", buf[i]);
+            printf("\n"); */
             clearBuffer(buf);
             
         }

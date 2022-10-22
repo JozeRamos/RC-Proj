@@ -293,16 +293,14 @@ int main(int argc, char *argv[])
                     alarmCount = 0;
                     cycle = 0;
                     count = count + 497;
+                    swap();
                 }
                 else if (checkSupervision(buf, 500, C_REJ_NR0)){
                     printf("Message rejected by transmitter");
                     alarmCount = 0;
-                    cycle = 0;
                     count = count + 497;
                 }
                 connectionBad = 0;
-                alarmCount = 0;
-                cycle = 0;
             }
             else {
                 printf("BAD READ");
