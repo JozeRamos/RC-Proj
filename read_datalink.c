@@ -143,8 +143,8 @@ int main(int argc, char *argv[])
     int disconnecting = 0;
     int state = 0;
     int ignore = 0;
-    unsigned char message[495];
-    unsigned char trash[495];
+    unsigned char message[493];
+    unsigned char trash[493];
     while (count < 3 && disconnecting == 0){
         if (read(fd, buf, 500)){
                 
@@ -179,8 +179,8 @@ int main(int argc, char *argv[])
                     break;
 
                 case 1: // Correct message, prints
-                    for(int i=0; i < 500; i++)
-                        printf("%c",buf[i]);
+                    for(int i=0; i < 494; i++)
+                        printf("%c",message[i]);
                     printf("\n");
                     clearBuffer(buf);
                     if (Nr)
@@ -400,7 +400,7 @@ int checkData(unsigned char buf[], unsigned char message[]){
                         bcc = bcc ^ message[messageC - 2];
                     }
                     else if (count == 1){
-                        for (int i = messageC - 1; i < 500; i ++){
+                        for (int i = messageC - 1; i < 494; i ++){
                             message[i] = 0;
                         }
                         return 1;
