@@ -171,6 +171,7 @@ int main(int argc, char *argv[])
                 case 0: // Repeated message, doesn't print
                     printf("Repeated message");
                     clearBuffer(buf);
+                    count = 0;
                     if (Nr)
                         trama(FLAG,A_RES,C_RR_NR1,A_RES ^ C_RR_NR1, FLAG, buf);
                     else
@@ -179,6 +180,7 @@ int main(int argc, char *argv[])
                     break;
 
                 case 1: // Correct message, prints
+                    count = 0;
                     for(int i=0; i < 494; i++)
                         printf("%c",message[i]);
                     printf("\n");
@@ -201,14 +203,12 @@ int main(int argc, char *argv[])
 
                 case 3: // Wrong header - No action, wait for timeout and resend
                     clearBuffer(buf);
-                    ignore = 1;
                     printf("Wrong header\n");
                     break;
                 }
                 //for(int i=0; i < 20; i++)
                 //    printf("%d -", buf[i]);
                 //write(fd, buf, 500);
-                state = 1;
             }
             //for(int i=0; i < 5; i++)
             //    printf("%d -", buf[i]);
@@ -224,10 +224,13 @@ int main(int argc, char *argv[])
             }
             else if (!ignore){
                 write(fd,buf,500);
-                count ++;
+            }
+            else{
+                write(fd,buf,500);
+                count++;
             }
             
-            //printf("count %i   state %i  \n",count, state);
+            printf("count %i   state %i  \n",count, state);
 
             
             clearBuffer(buf);
