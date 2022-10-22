@@ -238,17 +238,20 @@ int main(int argc, char *argv[])
         perror("Something went wrong...connection lost");
         exit(-1);
     }
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     if(disconnecting == 1){
-        while(!checkSupervision(buf, 500, C_UA)){
-            read(fd, buf, 500);// if UA end
-            for(int i=0; i < 5; i++)
-                printf("%d -", buf[i]);
-        }
+        sleep(1);
+        if (read(fd, buf, 500))
+            if(checkSupervision(buf, 500, C_UA))
+                printf("UA RECEIVED DISCONNECTING");
+            else
+                printf("UA NOT RECEIVED, DISCONNECTING");
+            // if UA end
+            //for(int i=0; i < 5; i++)
+            //  printf("%d -", buf[i]);
+        
     }
-
-    printf("all good");
-
-    
 
     clearBuffer(buf);
     printf("\n");

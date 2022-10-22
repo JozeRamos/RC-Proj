@@ -192,17 +192,21 @@ int main(int argc, char *argv[])
     int cycle = 0;
     int state = 0;
     int disconnectReceiver = 0;
+    int connectionBad = 0;
     alarmCount = 0;
+    unsigned char repeat[500];
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     while (alarmCount <3 && disconnectReceiver == 0)
     {
         
-        clearBuffer(buf);
         if (alarmEnabled == FALSE)
             {
             alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
         if (alarmCount == cycle && state == 0){
+            clearBuffer(buf);
             /*bytes = read(fd, buf, 500);
             for(int i=0; i < 5; i++)
     	        printf("%d -", buf[i]);
@@ -214,93 +218,116 @@ int main(int argc, char *argv[])
             trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
             write(fd, buf, 500);
             clearBuffer(buf);
-            read(fd, buf, 500);
-
-            if (checkSupervision(buf, 500, C_UA)){
-                printf("Connection good ");
-                state++;
-                alarmCount = 0;
-                cycle = 0;
-            }
+            sleep(1);
+            if(read(fd, buf, 500))
+                if (checkSupervision(buf, 500, C_UA)){
+                    printf("Connection good ");
+                    state++;
+                    alarmCount = 0;
+                    cycle = 0;
+                }
             
             //printf("state - %i  cycle - %i  alarm - %i", state, cycle, alarmCount);
         }
         if (alarmCount == cycle && count != 0 && state == 1) {
-            clearBuffer(buf);
-            infoTrama(buf);
             cycle++;
-            int numOfBytes = 3;
-            //printf("count - %i\n", count);
-            u_int16_t bcc = 0x00;
-            while (count > 0 && numOfBytes < 497){
-                pread(file, buffer, next_block_size(count, 1), (info.st_size - count));
-                //printf("count - %i\n",count);
-                count --;
-                numOfBytes ++;
-                //printf("%d  - %i", buffer[0], numOfBytes);
-                bcc = bcc ^ buffer[0];
-                if (buffer[0] == 0x7e){
-                    buf[numOfBytes] = 0x7d;
-                    numOfBytes++;
-                    buf[numOfBytes] = 0x5e;
+            if (connectionBad != 1){
+                clearBuffer(buf);
+                infoTrama(buf);
+                int numOfBytes = 3;
+                //printf("count - %i\n", count);
+                u_int16_t bcc = 0x00;
+                while (count > 0 && numOfBytes < 497 && connectionBad != 1){
+                    pread(file, buffer, next_block_size(count, 1), (info.st_size - count));
+                    //printf("count - %i\n",count);
+                    count --;
+                    numOfBytes ++;
+                    //printf("%d  - %i", buffer[0], numOfBytes);
+                    bcc = bcc ^ buffer[0];
+                    if (buffer[0] == 0x7e){
+                        buf[numOfBytes] = 0x7d;
+                        numOfBytes++;
+                        buf[numOfBytes] = 0x5e;
+                    }
+                    else if (buffer[0] == 0x7d){
+                        buf[numOfBytes] = 0x7d;
+                        numOfBytes++;
+                        buf[numOfBytes] = 0x5d;
+                    }
+                    else{
+                        buf[numOfBytes] = buffer[0];
+                    }
+                    //printf("byte - %d\n",buf[numOfBytes]);
                 }
-                else if (buffer[0] == 0x7d){
-                    buf[numOfBytes] = 0x7d;
-                    numOfBytes++;
-                    buf[numOfBytes] = 0x5d;
-                }
-                else{
-                    buf[numOfBytes] = buffer[0];
-                }
-                //printf("byte - %d\n",buf[numOfBytes]);
+                buf[numOfBytes + 1] = bcc;
+                buf[numOfBytes + 2] = FLAG;
+                write(fd, buf, 500);
+                clearBuffer(repeat);
+                for (int i = 0; i < 501; i++)
+                    repeat[i] = buf[i];
+                clearBuffer(buf);
             }
-            buf[numOfBytes + 1] = bcc;
-            buf[numOfBytes + 2] = FLAG;
+            else if (connectionBad == 1)
+            {
+                write(fd, repeat, 500);
+            }
+            
             /*for(int i=0; i < 12; i++)
                 printf("%d -", buf[i]);*/
             printf("\n Ns = %d Nr = %d \n",Ns, Nr);
-            write(fd, buf, 500);
-            clearBuffer(buf);
-            printf("here\n");
-            read(fd, buf, 500);
+            //printf("here\n");
+            sleep(1);
+            if (read(fd,buf,500) == 500){
+                printf("\nGOOD READ\n");
+                for(int i=0; i < 5; i++)
+                    printf("%d -", buf[i]);
+
+                if (checkSupervision(buf, 500, C_RR_NR0) == 1){
+                    printf("Connection good for now");
+                    alarmCount = 0;
+                    cycle = 0;
+                    swap();
+                }
+                else if (checkSupervision(buf, 500, C_RR_NR0) == 2){
+                    printf("Message repeated");
+                    alarmCount = 0;
+                    cycle = 0;
+                    count = count + 497;
+                }
+                else if (checkSupervision(buf, 500, C_REJ_NR0)){
+                    printf("Message rejected by transmitter");
+                    alarmCount = 0;
+                    cycle = 0;
+                    count = count + 497;
+                }
+                connectionBad = 0;
+                alarmCount = 0;
+                cycle = 0;
+            }
+            else {
+                printf("BAD READ");
+                connectionBad == 1;
+            }
             /*for(int i=0; i < 500; i++)
                     printf("%i -- %c\n",i, buf[i]);
                 printf("\n");*/
-            for(int i=0; i < 5; i++)
-                printf("%d -", buf[i]);
-
-            if (checkSupervision(buf, 500, C_RR_NR0) == 1){
-                printf("Connection good for now");
-                alarmCount = 0;
-                cycle = 0;
-                swap();
-            }
-            else if (checkSupervision(buf, 500, C_RR_NR0) == 2){
-                printf("Message repeated");
-                alarmCount = 0;
-                cycle = 0;
-                count = count + 497;
-            }
-            else if (checkSupervision(buf, 500, C_REJ_NR0)){
-                printf("Message rejected by transmitter");
-                alarmCount = 0;
-                cycle = 0;
-                count = count + 497;
-            }
+            
         }
         if (count < 1){
             while(disconnectReceiver == 0){
+                clearBuffer(buf);
                 trama(FLAG, A_SET,C_DISC, A_SET ^ C_DISC, FLAG, buf);
                 write(fd, buf, 500);
                 clearBuffer(buf);
-                read(fd, buf, 500);
-                printf("Disconnecting");
-                if(checkSupervision(buf, 500, C_DISC)){
-                    clearBuffer(buf);
-                    printf("Disconnection received");
-                    trama(FLAG, A_SET,C_UA, A_SET ^ C_UA, FLAG, buf);
-                    write(fd, buf, 500);
-                    disconnectReceiver = 1;
+                sleep(1);
+                if(read(fd, buf, 500)){
+                    if(checkSupervision(buf, 500, C_DISC)){
+                        clearBuffer(buf);
+                        printf("\nDisconnection received");
+                        trama(FLAG, A_SET,C_UA, A_SET ^ C_UA, FLAG, buf);
+                        write(fd, buf, 500);
+                        disconnectReceiver = 1;
+                    }
                 }
             }
         }
