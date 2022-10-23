@@ -74,11 +74,11 @@ int main(int argc, char *argv[])
     // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
 
-    if (argc < 2)
+    if (argc < 3)
     {
         printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
+               "Usage: %s <SerialPort> <filename>\n"
+               "Example: %s /dev/ttyS1 pinguim1.gif\n",
                argv[0],
                argv[0]);
         exit(1);
@@ -93,6 +93,16 @@ int main(int argc, char *argv[])
         perror(serialPortName);
         exit(-1);
     }
+
+    FILE *toWrite;
+
+    toWrite = fopen(argv[2],"w");
+
+     if(toWrite==NULL)
+        {
+            printf(" Error in opening file!");
+            exit(1);
+        }
 
     struct termios oldtio;
     struct termios newtio;
@@ -181,6 +191,7 @@ int main(int argc, char *argv[])
 
                 case 1: // Correct message, prints
                     count = 0;
+                    fputs(message, toWrite);
                     for(int i=0; i < 494; i++)
                         printf("%c",message[i]);
                     printf("\n");
