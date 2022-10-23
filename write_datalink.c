@@ -33,7 +33,7 @@
 
 #define BUFFER_SIZE 245
 
-int checkSupervision(unsigned char* buf, int length, u_int16_t ctrField);
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField);
 void clearBuffer(unsigned char buf[]);
 int next_block_size(int count, int buffer_size);
 void infoTrama(unsigned char buf[]);
@@ -74,7 +74,7 @@ void clearBuffer(unsigned char buf[]){
     }
 }
 
-void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
+void trama(u_int8_t a,u_int8_t b,u_int8_t c,u_int8_t d,u_int8_t e,unsigned char buf[]){
     buf[0] = a;
     buf[1] = b;
     buf[2] = c;
@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
                 infoTrama(buf);
                 int numOfBytes = 3;
                 //printf("count - %i\n", count);
-                u_int16_t bcc = 0x00;
+                u_int8_t bcc = 0x00;
                 while (count > 0 && numOfBytes < 497 && connectionBad != 1){
                     pread(file, buffer, next_block_size(count, 1), (info.st_size - count));
                     //printf("count - %i\n",count);
@@ -353,7 +353,7 @@ int main(int argc, char *argv[])
 }
 
 
-int checkSupervision(unsigned char* buf, int length, u_int16_t ctrField){
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
     if (ctrField == C_RR_NR0 && Nr == 1)

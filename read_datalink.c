@@ -41,7 +41,7 @@ int Ns = 0;
 int Nr = 1;
 
 void swap();
-int checkSupervision(unsigned char* buf, int length, u_int16_t ctrField);
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField);
 int checkData(unsigned char buf[],unsigned char message[]);
 void clearBuffer(unsigned char buf[]);
 
@@ -55,7 +55,7 @@ void swap(){
 
 
 
-void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
+void trama(u_int8_t a,u_int8_t b,u_int8_t c,u_int8_t d,u_int8_t e,unsigned char buf[]){
     buf[0] = a;
     buf[1] = b;
     buf[2] = c;
@@ -279,6 +279,7 @@ int main(int argc, char *argv[])
         perror("tcsetattr");
         exit(-1);
     }
+    fclose(toWrite);
 
     close(fd);
 
@@ -286,7 +287,7 @@ int main(int argc, char *argv[])
 }
 
 
-int checkSupervision(unsigned char* buf, int length, u_int16_t ctrField){
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
     while(currentChar<length){
@@ -345,9 +346,9 @@ int checkSupervision(unsigned char* buf, int length, u_int16_t ctrField){
 int checkData(unsigned char buf[], unsigned char message[]){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    u_int16_t ctrField;
-    u_int16_t oppositeCtrField;
-    u_int16_t bcc = 0x00;
+    u_int8_t ctrField;
+    u_int8_t oppositeCtrField;
+    u_int8_t bcc = 0x00;
     if (Ns == 1){
         ctrField = 0x40;
         oppositeCtrField = 0x00;
