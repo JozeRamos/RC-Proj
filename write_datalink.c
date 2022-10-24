@@ -207,7 +207,8 @@ int main(int argc, char *argv[])
         }
         if (alarmCount == cycle && count != 0 && state == 1) {
             cycle++;
-            if (connectionBad != 1){
+            if (connectionBad == 0){
+                clearBuffer(repeat);
                 clearBuffer(buf);
                 infoTrama(buf);
                 int numOfBytes = 3;
@@ -239,16 +240,18 @@ int main(int argc, char *argv[])
                 buf[numOfBytes + 2] = FLAG;
                 write(fd, buf, 500);
 
-                for (int k = 0; k<500; k++)
+                for (int k = 0; k<500; k++){
                     printf("%c", buf[k]);
+                    repeat[k] = buf[k];
+                }
 
-                clearBuffer(repeat);
-                for (int i = 0; i < 501; i++)
-                    repeat[i] = buf[i];
                 clearBuffer(buf);
             }
-            else if (connectionBad == 1)
+            else
             {
+
+                for(int i=0; i < 500; i++)
+                    printf("%c", repeat[i]);
                 write(fd, repeat, 500);
             }
             
@@ -283,8 +286,8 @@ int main(int argc, char *argv[])
                 connectionBad = 0;
             }
             else {
-                printf("BAD READ");
-                connectionBad == 1;
+                printf("\nBAD READ\n");
+                connectionBad = 1;
             }
             /*for(int i=0; i < 500; i++)
                     printf("%i -- %c\n",i, buf[i]);
