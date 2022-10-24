@@ -262,6 +262,10 @@ int main(int argc, char *argv[])
                 buf[numOfBytes + 1] = bcc;
                 buf[numOfBytes + 2] = FLAG;
                 write(fd, buf, 500);
+
+                for (int k = 0; k<500; k++)
+                    printf("%c", buf[k]);
+
                 clearBuffer(repeat);
                 for (int i = 0; i < 501; i++)
                     repeat[i] = buf[i];

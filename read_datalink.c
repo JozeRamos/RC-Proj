@@ -42,7 +42,7 @@ int Nr = 1;
 
 void swap();
 int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField);
-int checkData(unsigned char buf[],unsigned char message[]);
+int checkData(unsigned char buf[],unsigned char message[], int* messageC);
 void clearBuffer(unsigned char buf[]);
 
 void swap(){
@@ -154,12 +154,13 @@ int main(int argc, char *argv[])
     int state = 0;
     int ignore = 0;
     unsigned char message[493];
+    int messageC = 0;
     unsigned char trash[493];
     while (count < 3 && disconnecting == 0){
         if (read(fd, buf, 500)){
                 
                 
-            if (checkData(buf,trash) && state == 1){
+            if (checkData(buf,trash, &messageC) && state == 1){
                 state++;
                 count = 0;
             }
@@ -175,8 +176,8 @@ int main(int argc, char *argv[])
             else if (state == 2){
                 //printf("bytes\n");
                 clearBuffer(message);
-                printf("here - %d\n", checkData(buf,message));
-                switch (checkData(buf,trash))
+                printf("here - %d\n", checkData(buf,message,&messageC));
+                switch (checkData(buf,trash,&messageC))
                 {
                 case 0: // Repeated message, doesn't print
                     printf("Repeated message");
@@ -191,9 +192,10 @@ int main(int argc, char *argv[])
 
                 case 1: // Correct message, prints
                     count = 0;
-                    fputs(message, toWrite);
-                    for(int i=0; i < 494; i++)
+                    for(int i=0; i < (messageC); i++){
                         printf("%c",message[i]);
+                        fputc(message[i], toWrite);
+                    }
                     printf("\n");
                     clearBuffer(buf);
                     if (Nr)
@@ -343,7 +345,7 @@ int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField){
     return FALSE;
 }
 
-int checkData(unsigned char buf[], unsigned char message[]){
+int checkData(unsigned char buf[], unsigned char message[], int* messageC){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
     u_int8_t ctrField;
@@ -358,7 +360,7 @@ int checkData(unsigned char buf[], unsigned char message[]){
         oppositeCtrField = 0x40;
     }
     int count = 0;
-    int messageC = 0;
+    *messageC = 0;
     int maxState = 0; //Checks for maximum state, decides to ignore the frame if maxState is from 0 to 3
     while(currentChar<500){
         //printf("%i --  %d",currentChar, buf[currentChar]);
@@ -418,10 +420,10 @@ int checkData(unsigned char buf[], unsigned char message[]){
                 if (buf[currentChar] == FLAG){
                     //printf("FLAG");
                     if (count > 1){
-                        bcc = bcc ^ message[messageC - 2];
+                        bcc = bcc ^ message[(*messageC) - 2];
                     }
                     else if (count == 1){
-                        for (int i = messageC - 1; i < 494; i ++){
+                        for (int i = (*messageC) - 1; i < 494; i ++){
                             message[i] = 0;
                         }
                         return 1;
@@ -430,27 +432,31 @@ int checkData(unsigned char buf[], unsigned char message[]){
                         return 2;
 
                     if (buf[currentChar - 1] == bcc)
-                        message[messageC - 1] = 0;
+                        (*messageC) = (*messageC) - 1;
                         return 1;
                     return 2; 
                 }
                 if (buf[currentChar] == 0x7d){
                     if (buf[currentChar + 1] == 0x5e){
-                        message[messageC] = 0x7e;
+                        message[(*messageC)] = 0x7e;
+                        currentChar++;
+                    }
+                    else if (buf[currentChar + 1] == 0x5d){
+                        message[(*messageC)] = 0x7d;
+                        currentChar++;
                     }
                     else{
-                        message[messageC] = 0x7d;
+                        message[(*messageC)] = 0x7d;
                     }
-                    currentChar++;
                 }
                 else{
-                    message[messageC] = buf[currentChar];
+                    message[(*messageC)] = buf[currentChar];
                 }
                 if (count < 2)
                     count++;
                 else
-                    bcc = bcc ^ message[messageC - 2];
-                messageC++;
+                    bcc = bcc ^ message[(*messageC) - 2];
+                (*messageC) = (*messageC) + 1;
                 currentChar++;
                 break;
         }
