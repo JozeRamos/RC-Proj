@@ -205,30 +205,6 @@ int main(int argc, char *argv[])
             alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
-        if (alarmCount == cycle && state == 0){
-            clearBuffer(buf);
-            /*bytes = read(fd, buf, 500);
-            for(int i=0; i < 5; i++)
-    	        printf("%d -", buf[i]);
-            if (checkSupervision(buf, 500, C_UA)){
-                alarmEnabled = FALSE;
-                break;
-            }*/
-            cycle++;
-            trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
-            write(fd, buf, 500);
-            clearBuffer(buf);
-            sleep(1);
-            if(read(fd, buf, 500))
-                if (checkSupervision(buf, 500, C_UA)){
-                    printf("Connection good ");
-                    state++;
-                    alarmCount = 0;
-                    cycle = 0;
-                }
-            
-            //printf("state - %i  cycle - %i  alarm - %i", state, cycle, alarmCount);
-        }
         if (alarmCount == cycle && count != 0 && state == 1) {
             cycle++;
             if (connectionBad != 1){
@@ -314,6 +290,30 @@ int main(int argc, char *argv[])
                     printf("%i -- %c\n",i, buf[i]);
                 printf("\n");*/
             
+        }
+        if (alarmCount == cycle && state == 0){
+            clearBuffer(buf);
+            /*bytes = read(fd, buf, 500);
+            for(int i=0; i < 5; i++)
+    	        printf("%d -", buf[i]);
+            if (checkSupervision(buf, 500, C_UA)){
+                alarmEnabled = FALSE;
+                break;
+            }*/
+            cycle++;
+            trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
+            write(fd, buf, 500);
+            clearBuffer(buf);
+            sleep(1);
+            if(read(fd, buf, 500))
+                if (checkSupervision(buf, 500, C_UA)){
+                    printf("Connection good ");
+                    state++;
+                    alarmCount = 0;
+                    cycle = 0;
+                }
+            
+            //printf("state - %i  cycle - %i  alarm - %i", state, cycle, alarmCount);
         }
         if (count < 1){
             while(disconnectReceiver == 0){
