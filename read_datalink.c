@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
     unsigned char message[493];
     int messageC = 0;
     unsigned char trash[493];
-    while (count < 3 && disconnecting == 0){
+    while (count < 3){
         if (read(fd, buf, 500)){
                 
                 
@@ -172,6 +172,7 @@ int main(int argc, char *argv[])
                 write(fd, buf, 500);
                 clearBuffer(buf);
                 disconnecting = 1;
+                break;
             }
             else if (state == 2){
                 //printf("bytes\n");
@@ -187,7 +188,6 @@ int main(int argc, char *argv[])
                         trama(FLAG,A_RES,C_RR_NR1,A_RES ^ C_RR_NR1, FLAG, buf);
                     else
                         trama(FLAG,A_RES,C_RR_NR0,A_RES ^ C_RR_NR0, FLAG, buf);
-                    swap();
                     break;
 
                 case 1: // Correct message, prints
@@ -257,9 +257,10 @@ int main(int argc, char *argv[])
         perror("Something went wrong...connection lost");
         exit(-1);
     }
-    int flags = fcntl(fd, F_GETFL, 0);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     if(disconnecting == 1){
+        clearBuffer(buf);
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
         sleep(1);
         if (read(fd, buf, 500))
             if(checkSupervision(buf, 500, C_UA))
@@ -267,8 +268,6 @@ int main(int argc, char *argv[])
             else
                 printf("UA NOT RECEIVED, DISCONNECTING");
             // if UA end
-            //for(int i=0; i < 5; i++)
-            //  printf("%d -", buf[i]);
         
     }
 

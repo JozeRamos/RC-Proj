@@ -283,11 +283,17 @@ int main(int argc, char *argv[])
                     alarmCount = 0;
                     count = count + 497;
                 }
+                else {
+                    printf("Radom Message");
+                    connectionBad = 1;
+                    continue;
+                }
                 connectionBad = 0;
             }
             else {
                 printf("\nBAD READ\n");
                 connectionBad = 1;
+                continue;
             }
             /*for(int i=0; i < 500; i++)
                     printf("%i -- %c\n",i, buf[i]);
