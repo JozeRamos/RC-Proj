@@ -39,6 +39,17 @@ int next_block_size(int count, int buffer_size);
 void infoTrama(unsigned char buf[]);
 void swap();
 
+int readByByte(unsigned char buf[], int fd){
+    unsigned char x[1];
+    for(int i = 0; i<500; i++){
+        if(read(fd, x, 1))
+            buf[i] = x[0];
+        else return 0;
+    }
+    return 1;
+}
+
+
 
 int next_block_size(int count, int buffer_size) {
 return (count >= buffer_size)? buffer_size: count % buffer_size;
@@ -260,7 +271,7 @@ int main(int argc, char *argv[])
             printf("\n Ns = %d Nr = %d \n",Ns, Nr);
             //printf("here\n");
             sleep(1);
-            if (read(fd,buf,500) == 500){
+            if (readByByte(buf,fd)){
                 printf("\nGOOD READ\n");
                 for(int i=0; i < 5; i++)
                     printf("%d -", buf[i]);
@@ -314,7 +325,7 @@ int main(int argc, char *argv[])
             write(fd, buf, 500);
             clearBuffer(buf);
             sleep(1);
-            if(read(fd, buf, 500))
+            if(readByByte(buf,fd))
                 if (checkSupervision(buf, 500, C_UA)){
                     printf("Connection good ");
                     state++;
@@ -331,7 +342,7 @@ int main(int argc, char *argv[])
                 write(fd, buf, 500);
                 clearBuffer(buf);
                 sleep(1);
-                if(read(fd, buf, 500)){
+                if(readByByte(buf,fd)){
                     if(checkSupervision(buf, 500, C_DISC)){
                         clearBuffer(buf);
                         printf("\nDisconnection received");

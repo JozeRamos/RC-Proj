@@ -45,6 +45,18 @@ int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField);
 int checkData(unsigned char buf[],unsigned char message[], int* messageC);
 void clearBuffer(unsigned char buf[]);
 
+
+int readByByte(unsigned char buf[], int fd){
+    unsigned char x[1];
+    for(int i = 0; i<500; i++){
+        if(read(fd, x, 1))
+            buf[i] = x[0];
+        else return 0;
+    }
+    return 1;
+}
+
+
 void swap(){
     if (Ns) Ns = 0;
     else Ns = 1;
@@ -157,7 +169,7 @@ int main(int argc, char *argv[])
     int messageC = 0;
     unsigned char trash[493];
     while (count < 3){
-        if (read(fd, buf, 500)){
+        if (readByByte(buf,fd)){
                 
                 
             if (checkData(buf,trash, &messageC) && state == 1){
@@ -262,7 +274,7 @@ int main(int argc, char *argv[])
         int flags = fcntl(fd, F_GETFL, 0);
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);
         sleep(1);
-        if (read(fd, buf, 500))
+        if ((readByByte(buf,fd)))
             if(checkSupervision(buf, 500, C_UA))
                 printf("UA RECEIVED DISCONNECTING");
             else
