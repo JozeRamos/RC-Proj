@@ -48,9 +48,12 @@ void clearBuffer(unsigned char buf[]);
 
 int readByByte(unsigned char buf[], int fd){
     unsigned char x[1];
+    printf ("\n");
     for(int i = 0; i<500; i++){
-        if(read(fd, x, 1))
+        if(read(fd, x, 1)){
+            printf("x%d %d   ", i, x[0]);
             buf[i] = x[0];
+        }
         else return 0;
     }
     return 1;
@@ -136,7 +139,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 2;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -243,7 +246,13 @@ int main(int argc, char *argv[])
 
             if (checkSupervision(buf, 500, C_SET) && state == 0){
                 trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
+                printf("sending\n");
+
+                for(int j = 0; j<500; j++)
+                    printf("%d ", buf[j]);
+                //lseek(fd, 0, SEEK_SET);
                 write(fd, buf, 500);
+                printf("reading\n");
                 state++;
                 printf("good\n");
                 count++;
