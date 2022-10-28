@@ -26,48 +26,69 @@
 #define C_DISC 0x0B
 #define C_UA 0x07
 #define FLAG 0x7E
-#define C_RR 0x05
-#define C_REJ 0x01
-#define ESCAPE 0x7d
-#define FLAG_ESCAPE 0x5e
-#define ESCAPE_ESCAPE 0x5d
+#define C_RR_NR0 0x05
+#define C_RR_NR1 0x85
+#define C_REJ_NR0 0x01
+#define C_REJ_NR1 0x81
 
+#define BUFFER_SIZE 245
 
-#define BUF_SIZE 256
-#define DATASIZE 494
-#define FRAMESIZE DATASIZE+6
-
-int frame_num = 1;
-
-int checkSupervision(char* buf, int length, u_int16_t ctrField);
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField);
 void clearBuffer(unsigned char buf[]);
-char * readFromFile(long * length, char* txt_filename);
-char * createInformationFrame(char * information, int size);
-char * nextFrame(char * information);
+int next_block_size(int count, int buffer_size);
+void infoTrama(unsigned char buf[]);
+void swap();
+
+int readByByte(unsigned char buf[], int fd){
+    unsigned char x[1];
+    printf("\n");
+    for(int i = 0; i<500; i++){
+        if(read(fd, x, 1)){
+            printf("x%d %d   ", i, x[0]);
+            buf[i] = x[0];
+        }
+        else return 0;
+    }
+    return 1;
+}
+
+
+
+int next_block_size(int count, int buffer_size) {
+return (count >= buffer_size)? buffer_size: count % buffer_size;
+}
 
 volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
-int alarmCount = 0;
+int alarmCount;
 int Nr = 1;
 int Ns = 0;
+
+void swap(){
+    if (Ns) Ns = 0;
+    else Ns = 1;
+
+    if (Nr) Nr = 0;
+    else Nr = 1;
+ }
 
 // Alarm function handler
 void alarmHandler(int signal)
 {
     alarmEnabled = FALSE;
     alarmCount++;
-
-    printf("Alarm #%d\n", alarmCount);
+    if (alarmCount != 4)
+        printf("Alarm #%d\n", alarmCount);
 }
 
 void clearBuffer(unsigned char buf[]){
-    for (int i = 0; i < FRAMESIZE; i++){
+    for (int i = 0; i < 500; i++){
         buf[i] = 0;
     }
 }
 
-void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
+void trama(u_int8_t a,u_int8_t b,u_int8_t c,u_int8_t d,u_int8_t e,unsigned char buf[]){
     buf[0] = a;
     buf[1] = b;
     buf[2] = c;
@@ -75,22 +96,51 @@ void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned 
     buf[4] = e;
 }
 
+void infoTrama(unsigned char buf[]){
+    buf[0] = FLAG;
+    buf[1] = A_SET;
+    if (Ns == 1)
+        buf[2] = 0x40;
+    else
+        buf[2] = 0x00;
+    buf[3] = buf[1] ^ buf[2];
+}
+
 int main(int argc, char *argv[])
 {
     // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
-    char *txt_filename = argv[2];
 
     if (argc < 3)
     {
         printf("Incorrect program usage\n"
                "Usage: %s <SerialPort> <filename.txt>\n"
-               "Example: %s /dev/ttyS1 <loremipsum.txt>\n",
+               "Example: %s /dev/ttyS1 text.txt\n",
                argv[0],
                argv[0]);
         exit(1);
     }
 
+
+    /* check if file can be opened and is readable */
+    int file = open(argv[2], O_RDONLY);
+    if (file == -1) {
+        printf("error: cannot open %s\n", argv[1]);
+        return EXIT_FAILURE;
+    }
+
+    /* get the file size */
+    struct stat info;
+    int ret = lstat(argv[2], &info);
+    if (ret == -1) {
+        printf("error: cannot stat %s\n", argv[2]);
+        return EXIT_FAILURE;
+    }
+
+
+    int count = info.st_size;
+    printf("real - %i\n", count);
+    char buffer[BUFFER_SIZE];
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
@@ -121,7 +171,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -141,129 +191,207 @@ int main(int argc, char *argv[])
     }
 
     printf("New termios structure set\n");
-    printf("Sending the S frame!\n");
+
+    // Create string to send
+    unsigned char buf[500];
+    trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
     
-    // S Frame
-    unsigned char buf [FRAMESIZE];
-    
-    trama(FLAG, A_SET, C_SET, A_SET^C_SET, FLAG, buf);
-    
-    int bytes = write(fd, buf, 500);
-    printf("%d bytes written\n", bytes);
+    // In non-canonical mode, '\n' does not end the writing.
+    // Test this condition by placing a '\n' in the middle of the buffer.
+    // The whole buffer must be sent even with the '\n'.
+    //buf[5] = '\n';
+    //printf("%d bytes written\n", bytes);
     (void)signal(SIGALRM, alarmHandler);
     int cycle = 0;
-    while (alarmCount < 3)
+    int state = 0;
+    int disconnectReceiver = 0;
+    int connectionBad = 0;
+    alarmCount = 0;
+    unsigned char repeat[500];
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    while (alarmCount <3 && disconnectReceiver == 0)
     {
-        if (alarmCount == cycle){
+        
+        if (alarmEnabled == FALSE)
+            {
+            alarm(5); // Set alarm to be triggered in 3s
+            alarmEnabled = TRUE;
+        }
+        if (alarmCount == cycle && count != 0 && state == 1) {
+            cycle++;
+            if (connectionBad == 0){
+                clearBuffer(repeat);
+                clearBuffer(buf);
+                infoTrama(buf);
+                int numOfBytes = 3;
+                //printf("count - %i\n", count);
+                u_int8_t bcc = 0x00;
+                while (count > 0 && numOfBytes < 497 && connectionBad != 1){
+                    pread(file, buffer, next_block_size(count, 1), (info.st_size - count));
+                    //printf("count - %i\n",count);
+                    count --;
+                    numOfBytes ++;
+                    //printf("%d  - %i", buffer[0], numOfBytes);
+                    bcc = bcc ^ buffer[0];
+                    if (buffer[0] == 0x7e){
+                        buf[numOfBytes] = 0x7d;
+                        numOfBytes++;
+                        buf[numOfBytes] = 0x5e;
+                    }
+                    else if (buffer[0] == 0x7d){
+                        buf[numOfBytes] = 0x7d;
+                        numOfBytes++;
+                        buf[numOfBytes] = 0x5d;
+                    }
+                    else{
+                        buf[numOfBytes] = buffer[0];
+                    }
+                    //printf("byte - %d\n",buf[numOfBytes]);
+                }
+                buf[numOfBytes + 1] = bcc;
+                buf[numOfBytes + 2] = FLAG;
+                write(fd, buf, 500);
+
+                for (int k = 0; k<500; k++){
+                    printf("%c", buf[k]);
+                    repeat[k] = buf[k];
+                }
+
+                clearBuffer(buf);
+            }
+            else
+            {
+
+                for(int i=0; i < 500; i++)
+                    printf("%c", repeat[i]);
+                write(fd, repeat, 500);
+            }
+            
+            /*for(int i=0; i < 12; i++)
+                printf("%d -", buf[i]);*/
+            printf("\n Ns = %d Nr = %d \n",Ns, Nr);
+            //printf("here\n");
+            sleep(1);
+            if (readByByte(buf,fd)){
+                printf("\nGOOD READ\n");
+                for(int i=0; i < 5; i++)
+                    printf("%d -", buf[i]);
+
+                if (checkSupervision(buf, 500, C_RR_NR0) == 1){
+                    printf("Connection good for now");
+                    alarmCount = 0;
+                    cycle = 0;
+                    swap();
+                }
+                else if (checkSupervision(buf, 500, C_RR_NR0) == 2){
+                    printf("Message repeated");
+                    alarmCount = 0;
+                    cycle = 0;
+                    count = count + 497;
+                    swap();
+                }
+                else if (checkSupervision(buf, 500, C_REJ_NR0)){
+                    printf("Message rejected by transmitter");
+                    alarmCount = 0;
+                    count = count + 497;
+                }
+                else {
+                    printf("Radom Message");
+                    connectionBad = 1;
+                    continue;
+                }
+                connectionBad = 0;
+            }
+            else {
+                printf("\nBAD READ\n");
+                connectionBad = 1;
+                continue;
+            }
+            /*for(int i=0; i < 500; i++)
+                    printf("%i -- %c\n",i, buf[i]);
+                printf("\n");*/
+            
+        }
+        if (alarmCount == cycle && state == 0){
             clearBuffer(buf);
-            bytes = read(fd, buf, 500);
+            /*bytes = read(fd, buf, 500);
+            for(int i=0; i < 5; i++)
+    	        printf("%d -", buf[i]);
             if (checkSupervision(buf, 500, C_UA)){
                 alarmEnabled = FALSE;
                 break;
-            }
+            }*/
             cycle++;
             trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
-            int bytes = write(fd, buf, 500);
+            write(fd, buf, 500);
+            clearBuffer(buf);
+            sleep(3);
+            if(readByByte(buf,fd))
+                if (checkSupervision(buf, 500, C_UA)){
+                    printf("Connection good ");
+                    state++;
+                    alarmCount = 0;
+                    cycle = 0;
+                }
+            
+            //printf("state - %i  cycle - %i  alarm - %i", state, cycle, alarmCount);
         }
-        if (alarmEnabled == FALSE)
-        {
-            alarm(3); // Set alarm to be triggered in 3s
-            alarmEnabled = TRUE;
+        if (count < 1){
+            while(disconnectReceiver == 0){
+                clearBuffer(buf);
+                trama(FLAG, A_SET,C_DISC, A_SET ^ C_DISC, FLAG, buf);
+                write(fd, buf, 500);
+                clearBuffer(buf);
+                sleep(1);
+                if(readByByte(buf,fd)){
+                    if(checkSupervision(buf, 500, C_DISC)){
+                        clearBuffer(buf);
+                        printf("\nDisconnection received");
+                        trama(FLAG, A_SET,C_UA, A_SET ^ C_UA, FLAG, buf);
+                        write(fd, buf, 500);
+                        disconnectReceiver = 1;
+                    }
+                }
+            }
         }
     }
     if (alarmCount == 3){
     	printf("Timed out!!!");
     	exit(-1);
     }
-    
+    close(file);
     printf("\n");
     
     // Wait until all bytes have been written to the serial port
     sleep(1);
 
-
-    // Create the frames
-    long textsize = 0;
-    char * frame;
-    char * text = readFromFile(&textsize, txt_filename);
-    int max_n = textsize/DATASIZE + (textsize % DATASIZE != 0); // max frame number int
-    
-    printf("Minimum Frames = %d\n\n\n", max_n);
-    
-    int size = DATASIZE;
-    
-    printf("Sending the I frame!\n");
-    
-    for(int i = 0; i < max_n; i++){
-        if (frame_num == max_n) 
-            size = textsize % DATASIZE; // if it's the last frame, it could be shorter than 500 chars
-
-        frame = createInformationFrame(text+(i*DATASIZE), size);
-        
-            int bytes = write(fd, frame, FRAMESIZE);
-            
-            printf("\nFrame number %d:\n\n", frame_num);
-            for(int j = 0; j<(size+6); j++){
-                printf("%d ", frame[j]);
-                //if(i%100 == 0) printf("\n\n");
-            }
-            printf("\nend");
-            
-            printf("%d bytes written\n", bytes);
-            (void)signal(SIGALRM, alarmHandler);
-            int cycle = 0;
-            while (alarmCount < 3)
-            {
-                if (alarmCount == cycle){
-                    clearBuffer(buf);
-                    bytes = read(fd, buf, FRAMESIZE);
-                    if (checkSupervision(buf, FRAMESIZE, C_UA)){
-                        alarmEnabled = FALSE;
-                        break;
-                    }
-                    cycle++;
-                    int bytes = write(fd, frame, FRAMESIZE);
-                }
-                if (alarmEnabled == FALSE)
-                {
-                    alarm(3); // Set alarm to be triggered in 3s
-                    alarmEnabled = TRUE;
-                }
-            }
-            if (alarmCount == 3){
-            	printf("Timed out!!!");
-            	exit(-1);
-            }
-            
-            printf("\n");
-            
-            // Wait until all bytes have been written to the serial port
-            sleep(1);
-
-            // Restore the old port settings
-            if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
-            {
-                perror("tcsetattr");
-                exit(-1);
-            }
-
-           close(fd);
-        frame_num++;
+    // Restore the old port settings
+    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
+    {
+        perror("tcsetattr");
+        exit(-1);
     }
-    
+
+    close(fd);
 
     return 0;
 }
 
 
-int checkSupervision(char* buf, int length, u_int16_t ctrField){
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    if ((ctrField == C_RR || ctrField == C_REJ) && Nr == 1){
-        ctrField = 0x80 | ctrField;
-    }
+    if (ctrField == C_RR_NR0 && Nr == 1)
+        ctrField = C_RR_NR1;
+    if (ctrField == C_REJ_NR0 && Nr == 1)
+        ctrField = C_REJ_NR1;
+
+
     while(currentChar<length){
         //printf("%d - ",buf[currentChar]);
+        unsigned char x = buf[currentChar];
+        int resend = 0;
         switch(state){
             case 0: 
                 if(buf[currentChar] == FLAG)
@@ -284,6 +412,10 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
             case 2:
                 if(buf[currentChar] == ctrField)
                     state = 3;
+                else if(buf[currentChar] == (ctrField ^ 0x80)){
+                    resend = 1;
+                    state = 3;
+                }
                 else if(buf[currentChar] == FLAG)
                     state = 1;
                 else 
@@ -304,8 +436,12 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
                 break;
             
             case 4:
-                if(buf[currentChar] == FLAG)
-                    return TRUE;
+                if(buf[currentChar] == FLAG){
+                    if (resend == 0)
+                        return 1; //Good frame with C_RR Nr byte equal to our Nr value. Can proceed
+                    else 
+                        return 2; //Received a confirmation for a frame that wasn't the one sent. Resending this one.
+                }
                 else 
                     state = 0;
                     
@@ -313,60 +449,5 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
                 break;
         }
     }
-    return FALSE;
-}
-
-char * createInformationFrame(char * information, int size){
-    char * frame;
-    int c = 0;
-    u_int16_t BCC2 = 0x00;
-    frame = malloc (size+6);
-    frame[0] = FLAG;
-    frame[1] = A_SET;
-    if(Ns == 0) 
-        frame[2] = 0x00;
-    else
-        frame[2] = 0x40;
-    frame[3] = frame[1]^frame[2];
-
-    for (int i = 0; i<size; i++){
-        BCC2 = BCC2 ^ information[i];
-        if(information[i] == FLAG){
-            frame[4+i+c] = ESCAPE;
-            frame[4+i+1+c] = FLAG_ESCAPE;
-            c++;
-        }
-        else if(information[i] == ESCAPE){
-            frame[4+i+c] = ESCAPE;
-            frame[4+i+1+c] = ESCAPE_ESCAPE;
-            c++;
-        }
-        else{
-            frame[4+i+c] = information[i];
-        }
-    }
-    frame[size+4] = BCC2;
-    frame[size+5] = FLAG;
-    
-    return frame;
-}
-
-
-char * readFromFile(long* length, char* txt_filename){
-    char * buffer = 0;
-    FILE * fp = fopen (txt_filename, "rb");
-    if (fp != NULL){
-        fseek (fp, 0, SEEK_END);
-        *length = ftell (fp);
-        fseek (fp, 0, SEEK_SET);
-        buffer = malloc ((*length)+1);
-
-        if (buffer)
-        {
-            fread (buffer, 1, *length, fp);
-        }
-        fclose (fp);
-        buffer[*length] = '\0';
-        return buffer;
-    }
+    return 0; //Frame not good
 }
