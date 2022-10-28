@@ -41,9 +41,12 @@ void swap();
 
 int readByByte(unsigned char buf[], int fd){
     unsigned char x[1];
+    printf("\n");
     for(int i = 0; i<500; i++){
-        if(read(fd, x, 1))
+        if(read(fd, x, 1)){
+            printf("x%d %d   ", i, x[0]);
             buf[i] = x[0];
+        }
         else return 0;
     }
     return 1;
@@ -168,7 +171,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -197,7 +200,6 @@ int main(int argc, char *argv[])
     // Test this condition by placing a '\n' in the middle of the buffer.
     // The whole buffer must be sent even with the '\n'.
     //buf[5] = '\n';
-
     //printf("%d bytes written\n", bytes);
     (void)signal(SIGALRM, alarmHandler);
     int cycle = 0;
@@ -213,7 +215,7 @@ int main(int argc, char *argv[])
         
         if (alarmEnabled == FALSE)
             {
-            alarm(3); // Set alarm to be triggered in 3s
+            alarm(5); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
         if (alarmCount == cycle && count != 0 && state == 1) {
@@ -324,7 +326,7 @@ int main(int argc, char *argv[])
             trama(FLAG,A_SET,C_SET,A_SET ^ C_SET,FLAG,buf);
             write(fd, buf, 500);
             clearBuffer(buf);
-            sleep(1);
+            sleep(3);
             if(readByByte(buf,fd))
                 if (checkSupervision(buf, 500, C_UA)){
                     printf("Connection good ");
