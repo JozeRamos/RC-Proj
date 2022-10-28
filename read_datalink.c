@@ -25,8 +25,10 @@
 #define C_DISC 0x0B
 #define C_UA 0x07
 #define FLAG 0x7E
-#define C_RR 0x05
-#define C_REJ 0x01
+#define C_RR_NR0 0x05
+#define C_RR_NR1 0x85
+#define C_REJ_NR0 0x01
+#define C_REJ_NR1 0x81
 
 #define BUF_SIZE 256
 
@@ -38,11 +40,37 @@ volatile int STOP = FALSE;
 int Ns = 0;
 int Nr = 1;
 
-int checkSupervision(char* buf, int length, u_int16_t ctrField);
-int checkData(char* buf, int length);
+void swap();
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField);
+int checkData(unsigned char buf[],unsigned char message[], int* messageC);
 void clearBuffer(unsigned char buf[]);
 
-void trama(u_int16_t a,u_int16_t b,u_int16_t c,u_int16_t d,u_int16_t e,unsigned char buf[]){
+
+int readByByte(unsigned char buf[], int fd){
+    unsigned char x[1];
+    printf ("\n");
+    for(int i = 0; i<500; i++){
+        if(read(fd, x, 1)){
+            printf("x%d %d   ", i, x[0]);
+            buf[i] = x[0];
+        }
+        else return 0;
+    }
+    return 1;
+}
+
+
+void swap(){
+    if (Ns) Ns = 0;
+    else Ns = 1;
+
+    if (Nr) Nr = 0;
+    else Nr = 1;
+ }
+
+
+
+void trama(u_int8_t a,u_int8_t b,u_int8_t c,u_int8_t d,u_int8_t e,unsigned char buf[]){
     buf[0] = a;
     buf[1] = b;
     buf[2] = c;
@@ -61,16 +89,17 @@ int main(int argc, char *argv[])
     // Program usage: Uses either COM1 or COM2
     const char *serialPortName = argv[1];
 
-    if (argc < 2)
+    if (argc < 3)
     {
         printf("Incorrect program usage\n"
-               "Usage: %s <SerialPort>\n"
-               "Example: %s /dev/ttyS1\n",
+               "Usage: %s <SerialPort> <filename>\n"
+               "Example: %s /dev/ttyS1 pinguim1.gif\n",
                argv[0],
                argv[0]);
         exit(1);
     }
-
+    
+    
     // Open serial port device for reading and writing and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
@@ -79,6 +108,16 @@ int main(int argc, char *argv[])
         perror(serialPortName);
         exit(-1);
     }
+
+    FILE *toWrite;
+
+    toWrite = fopen(argv[2],"w");
+
+     if(toWrite==NULL)
+        {
+            printf(" Error in opening file!");
+            exit(1);
+        }
 
     struct termios oldtio;
     struct termios newtio;
@@ -100,7 +139,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 2;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -123,33 +162,138 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[500];
-
-    /*for(int i=0; i < 5; i++)
-    	printf("%d -", buf[i]);
-    */
+    
     //If the received trama is correct it moves forward, else it reads the trama sent again, if it reads it for more than 3 times it gets a error and exits
     int count = 0;
-    int bytes = read(fd, buf, 500);
-    while (!checkSupervision(buf, 500, C_SET) && count < 3){
-        clearBuffer(buf);
-        bytes = read(fd, buf, 500);
-        count ++;
-    }/*
-    if (count >= 3){
-        printf("Something went wrong... %i",count);
+    int disconnecting = 0;
+    int state = 0;
+    int ignore = 0;
+    unsigned char message[493];
+    int messageC = 0;
+    unsigned char trash[493];
+    while (count < 3){
+        if (readByByte(buf,fd)){
+                
+                
+            if (checkData(buf,trash, &messageC) && state == 1){
+                state++;
+                count = 0;
+            }
+            else if (state == 1){
+                state--;
+            }
+            if (state == 2 && checkSupervision(buf, 500, C_DISC)){
+                trama(FLAG,A_RES,C_DISC, A_RES^C_DISC, FLAG,buf);
+                write(fd, buf, 500);
+                clearBuffer(buf);
+                disconnecting = 1;
+                break;
+            }
+            else if (state == 2){
+                //printf("bytes\n");
+                clearBuffer(message);
+                printf("here - %d\n", checkData(buf,message,&messageC));
+                switch (checkData(buf,trash,&messageC))
+                {
+                case 0: // Repeated message, doesn't print
+                    printf("Repeated message");
+                    clearBuffer(buf);
+                    count = 0;
+                    if (Nr)
+                        trama(FLAG,A_RES,C_RR_NR1,A_RES ^ C_RR_NR1, FLAG, buf);
+                    else
+                        trama(FLAG,A_RES,C_RR_NR0,A_RES ^ C_RR_NR0, FLAG, buf);
+                    break;
+
+                case 1: // Correct message, prints
+                    count = 0;
+                    for(int i=0; i < (messageC); i++){
+                        printf("%c",message[i]);
+                        fputc(message[i], toWrite);
+                    }
+                    printf("\n");
+                    clearBuffer(buf);
+                    if (Nr)
+                        trama(FLAG,A_RES,C_RR_NR1,A_RES ^ C_RR_NR1, FLAG, buf);
+                    else
+                        trama(FLAG,A_RES,C_RR_NR0,A_RES ^ C_RR_NR0, FLAG, buf);
+                    swap();
+                    break;
+
+                case 2: // Rejected message
+                    printf("rejected message\n");
+                    clearBuffer(buf);
+                    if (Nr)
+                        trama(FLAG,A_RES,C_REJ_NR1,A_RES ^ C_REJ_NR1, FLAG, buf);
+                    else
+                        trama(FLAG,A_RES,C_REJ_NR0,A_RES ^ C_REJ_NR0, FLAG, buf);
+                    break;
+
+                case 3: // Wrong header - No action, wait for timeout and resend
+                    clearBuffer(buf);
+                    printf("Wrong header\n");
+                    break;
+                }
+                //for(int i=0; i < 20; i++)
+                //    printf("%d -", buf[i]);
+                //write(fd, buf, 500);
+            }
+            //for(int i=0; i < 5; i++)
+            //    printf("%d -", buf[i]);
+            //printf("\n");
+            
+            printf("\n Ns = %d Nr = %d \n", Ns, Nr);
+
+            if (checkSupervision(buf, 500, C_SET) && state == 0){
+                trama(FLAG,A_RES,C_UA,A_RES ^ C_UA,FLAG,buf);
+                printf("sending\n");
+
+                for(int j = 0; j<500; j++)
+                    printf("%d ", buf[j]);
+                //lseek(fd, 0, SEEK_SET);
+                write(fd, buf, 500);
+                printf("reading\n");
+                state++;
+                printf("good\n");
+                count++;
+            }
+            else if (!ignore){
+                write(fd,buf,500);
+            }
+            else{
+                write(fd,buf,500);
+                count++;
+            }
+            
+            //printf("count %i   state %i  \n",count, state);
+
+            /* for(int i=0; i < 500; i++)
+                printf("%d -", buf[i]);
+            printf("\n"); */
+            clearBuffer(buf);
+            
+        }
+    }
+    if (count > 2){
+        perror("Something went wrong...connection lost");
         exit(-1);
-    }*/
+    }
+    if(disconnecting == 1){
+        clearBuffer(buf);
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        sleep(1);
+        if ((readByByte(buf,fd)))
+            if(checkSupervision(buf, 500, C_UA))
+                printf("UA RECEIVED DISCONNECTING");
+            else
+                printf("UA NOT RECEIVED, DISCONNECTING");
+            // if UA end
+        
+    }
+
     clearBuffer(buf);
     printf("\n");
-    sleep(1);
-    bytes = read(fd, buf, 500);
-    for (int i = 0; i < 500; i++){
-        printf("%d - ",buf[i]);
-    }/*
-    if (count >= 3){
-        perror("Something went wrong...");
-        exit(-1);
-    }*/
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
@@ -157,6 +301,7 @@ int main(int argc, char *argv[])
         perror("tcsetattr");
         exit(-1);
     }
+    fclose(toWrite);
 
     close(fd);
 
@@ -164,16 +309,13 @@ int main(int argc, char *argv[])
 }
 
 
-int checkSupervision(char* buf, int length, u_int16_t ctrField){
+int checkSupervision(unsigned char* buf, int length, u_int8_t ctrField){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    if ((ctrField == C_RR || ctrField == C_REJ) && Ns == 1){
-        ctrField = 0x80 | ctrField;
-    }
     while(currentChar<length){
         //printf("%d",buf[currentChar]);
         switch(state){
-            case 0: 
+            case 0:
                 if(buf[currentChar] == FLAG)
                     state = 1;
                 
@@ -191,7 +333,7 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
                 
             case 2:
                 if(buf[currentChar] == ctrField)
-                    state = 3;
+                    state = 3; 
                 else if(buf[currentChar] == FLAG)
                     state = 1;
                 else 
@@ -217,36 +359,44 @@ int checkSupervision(char* buf, int length, u_int16_t ctrField){
                 else 
                     state = 0;
                     
-                currentChar++;
                 break;
         }
     }
     return FALSE;
 }
 
-int checkData(char* buf, int length){
+int checkData(unsigned char buf[], unsigned char message[], int* messageC){
     int currentChar = 0;
     int state = 0; // 0 = START, 1 = FLAG, 2 = ADDRESS, 3 = CONTROL, 4 = BCC, 5 = STOPFLAG
-    u_int16_t ctrField;
-    u_int16_t bcc = 0x00;
-    if (Ns = 1){
+    u_int8_t ctrField;
+    u_int8_t oppositeCtrField;
+    u_int8_t bcc = 0x00;
+    if (Ns == 1){
         ctrField = 0x40;
+        oppositeCtrField = 0x00;
     }
     else{
         ctrField = 0x00;
+        oppositeCtrField = 0x40;
     }
     int count = 0;
-    while(currentChar<length){
+    *messageC = 0;
+    int maxState = 0; //Checks for maximum state, decides to ignore the frame if maxState is from 0 to 3
+    while(currentChar<500){
+        //printf("%i --  %d",currentChar, buf[currentChar]);
         switch(state){
-            case 0: 
+            case 0:
+                //printf("1\n");
                 if(buf[currentChar] == FLAG)
                     state = 1;
-                
                 currentChar++;
                 break;
             
             case 1:
-                if(buf[currentChar] == A_RES)
+                //printf("2\n");
+                if (maxState < state)
+                    maxState = state;
+                if(buf[currentChar] == A_SET)
                     state = 2;
                 else if(buf[currentChar] != FLAG)
                     state = 0;
@@ -255,6 +405,9 @@ int checkData(char* buf, int length){
                 break;
                 
             case 2:
+                //printf("3\n");
+                if (maxState < state)
+                    maxState = state;
                 if(buf[currentChar] == ctrField)
                     state = 3;
                 else if(buf[currentChar] == FLAG)
@@ -266,6 +419,9 @@ int checkData(char* buf, int length){
                 break;
                 
             case 3:
+                //printf("4\n");
+                if (maxState < state)
+                    maxState = state;
                 if(buf[currentChar] == buf[currentChar-1]^buf[currentChar-2]){
                     state = 4;
                 }
@@ -278,31 +434,58 @@ int checkData(char* buf, int length){
                 break;
 
             case 4: // Reading data
-                if (buf[currentChar] == FLAG && buf[currentChar - 1] == bcc){
-                    if (count == 2)
-                        bcc = bcc ^ buf[currentChar - 2];
-                    return 1;
+                //printf("5\n");
+                if (maxState < state)
+                    maxState = state;
+                if (buf[currentChar] == FLAG){
+                    //printf("FLAG");
+                    if (count > 1){
+                        bcc = bcc ^ message[(*messageC) - 2];
+                    }
+                    else if (count == 1){
+                        for (int i = (*messageC) - 1; i < 494; i ++){
+                            message[i] = 0;
+                        }
+                        return 1;
+                    }
+                    else
+                        return 2;
+
+                    if (buf[currentChar - 1] == bcc)
+                        (*messageC) = (*messageC) - 1;
+                        return 1;
+                    return 2; 
                 }
-                if (buf[currentChar] == 0x7d && buf[currentChar + 1] == 0x5e){
-                    buf[currentChar] = 0x7e;
-                    buf[currentChar + 1] = 0x00;
+                if (buf[currentChar] == 0x7d){
+                    if (buf[currentChar + 1] == 0x5e){
+                        message[(*messageC)] = 0x7e;
+                        currentChar++;
+                    }
+                    else if (buf[currentChar + 1] == 0x5d){
+                        message[(*messageC)] = 0x7d;
+                        currentChar++;
+                    }
+                    else{
+                        message[(*messageC)] = 0x7d;
+                    }
                 }
-                else if (buf[currentChar] == 0x7d && buf[currentChar + 1] == 0x5d){
-                    buf[currentChar] = 0x7d;
-                    buf[currentChar + 1] = 0x00;
+                else{
+                    message[(*messageC)] = buf[currentChar];
                 }
                 if (count < 2)
                     count++;
-                else if (buf[currentChar] == 0x00 && (buf[currentChar - 1] != 0x7d
-                            || buf[currentChar - 1] != 0x7e))
-                    bcc = bcc ^ buf[currentChar - 2];
                 else
-                    bcc = bcc ^ buf[currentChar - 2];
-                
+                    bcc = bcc ^ message[(*messageC) - 2];
+                (*messageC) = (*messageC) + 1;
+                currentChar++;
                 break;
         }
     }
+    if (maxState < 4){
+        return 3;
+    }
     if (state == 4)
         return 2;
+    printf("\nEND\n");
     return 0;
 }
