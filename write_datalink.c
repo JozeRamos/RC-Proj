@@ -227,7 +227,7 @@ int main(int argc, char *argv[])
                 int numOfBytes = 3;
                 //printf("count - %i\n", count);
                 u_int8_t bcc = 0x00;
-                while (count > 0 && numOfBytes < 497 && connectionBad != 1){
+                while (count > 0 && numOfBytes < 496 && connectionBad != 1){
                     pread(file, buffer, next_block_size(count, 1), (info.st_size - count));
                     //printf("count - %i\n",count);
                     count --;
@@ -249,7 +249,19 @@ int main(int argc, char *argv[])
                     }
                     //printf("byte - %d\n",buf[numOfBytes]);
                 }
-                buf[numOfBytes + 1] = bcc;
+                if (buffer[numOfBytes + 1] == 0x7e){
+                        buf[numOfBytes + 1] = 0x7d;
+                        numOfBytes++;
+                        buf[numOfBytes + 1] = 0x5e;
+                    }
+                else if (buffer[numOfBytes + 1] == 0x7d){
+                        buf[numOfBytes + 1] = 0x7d;
+                        numOfBytes++;
+                        buf[numOfBytes + 1] = 0x5d;
+                    }
+                else{
+                    buf[numOfBytes + 1] = bcc;
+                }
                 buf[numOfBytes + 2] = FLAG;
                 write(fd, buf, 500);
 
@@ -293,7 +305,7 @@ int main(int argc, char *argv[])
                 }
                 else if (checkSupervision(buf, 500, C_REJ_NR0)){
                     printf("Message rejected by transmitter");
-                    alarmCount = 0;
+                    cycle++;
                     count = count + 497;
                 }
                 else {

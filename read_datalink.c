@@ -223,6 +223,7 @@ int main(int argc, char *argv[])
                 case 2: // Rejected message
                     printf("rejected message\n");
                     clearBuffer(buf);
+                    count++;
                     if (Nr)
                         trama(FLAG,A_RES,C_REJ_NR1,A_RES ^ C_REJ_NR1, FLAG, buf);
                     else
@@ -231,6 +232,7 @@ int main(int argc, char *argv[])
 
                 case 3: // Wrong header - No action, wait for timeout and resend
                     clearBuffer(buf);
+                    count++;
                     printf("Wrong header\n");
                     break;
                 }
@@ -262,7 +264,6 @@ int main(int argc, char *argv[])
             }
             else{
                 write(fd,buf,500);
-                count++;
             }
             
             //printf("count %i   state %i  \n",count, state);
